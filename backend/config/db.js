@@ -1,10 +1,14 @@
 const { Pool } = require('pg');
 
 // Support both connection string (Neon, Supabase, etc.) and individual credentials
-const poolConfig = process.env.DATABASE_URL
+const connectionString = process.env.DATABASE_URL;
+const requiresSsl = process.env.DB_SSL === 'true' ||
+  (connectionString && new URL(connectionString).searchParams.get('sslmode') === 'require');
+
+const poolConfig = connectionString
   ? {
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      connectionString,
+      ...(requiresSsl && { ssl: { rejectUnauthorized: false } })
     }
   : {
       user: process.env.DB_USER || 'postgres',

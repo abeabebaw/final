@@ -1,30 +1,48 @@
-# Environment files
-.env.example
+# ─── Environment Variables ───
 .env
-*.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*
+!.env.example
 
-# Docker files
-docker-compose.yml
-docker-compose.yaml
-Dockerfile
-
-# Node modules
+# ─── Node ───
 node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# Logs
-logs/
-*.log
+# ─── Vite Cache ───
+.vite/
+**/.vite/
 
-# OS files
+# ─── Build Output ───
+dist/
+build/
+**/dist/
+**/build/
+
+# ─── Uploads (User Files) ───
+backend/uploads/
+**/uploads/
+
+# ─── OS Files ───
 .DS_Store
 Thumbs.db
 
-# IDE
+# ─── IDE ───
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
-*.swo
 
-# Build outputs
-dist/
-build/
+# ─── Logs ───
+*.log
+logs/
+
+# ─── Database ───
+*.db
+*.sqlite

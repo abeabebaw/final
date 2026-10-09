@@ -99,6 +99,7 @@ CREATE TABLE parcels (
   sub_city VARCHAR(100),
   woreda VARCHAR(50),
   geometry GEOMETRY('POLYGON', 4326),
+  geometry_wkt TEXT,
   is_registered BOOLEAN DEFAULT FALSE,
   registration_date TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
