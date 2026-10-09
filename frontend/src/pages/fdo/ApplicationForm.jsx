@@ -916,7 +916,7 @@ export default function ApplicationForm() {
                 disabled={loading}
                 className="px-5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded flex items-center gap-1.5 shadow"
               >
-                {loading ? 'Processing...' : isEditMode ? '✓ Save Updates' : 'Next ➔'}
+                {loading ? 'Processing...' : isEditMode ? '✓ Save Updates' : 'submit'}
               </button>
             </div>
 
