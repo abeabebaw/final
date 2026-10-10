@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Layout from './components/layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -49,13 +49,13 @@ export default function App() {
       <Route path="/portal" element={<PublicHome />} />
       <Route path="/portal/announcements" element={<PublicAnnouncements />} />
       <Route path="/portal/application-status" element={<PublicApplicationStatus />} />
+      <Route path="/" element={<PublicHome />} />
       
       <Route path="/" element={
         <ProtectedRoute>
           <Layout />
         </ProtectedRoute>
       }>
-        <Route index element={<Navigate to="/dashboard" />} />
         <Route path="dashboard" element={<Dashboard />} />
         
         {/* FDO Routes */}

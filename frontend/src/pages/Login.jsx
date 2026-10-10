@@ -4,6 +4,17 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { Shield, Lock, User, Compass, ArrowRight } from 'lucide-react';
 
+const roleHomePages = {
+  ADMIN: '/dashboard',
+  FDO: '/applications',
+  DO: '/do',
+  RO: '/ro',
+  SRO: '/sro',
+  GO: '/recs',
+  SGO: '/recs',
+  PUBLIC: '/portal',
+};
+
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -15,9 +26,9 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(username, password);
+      const { user } = await login(username, password);
       toast.success('Authentication successful! Welcome to CRPRS');
-      navigate('/dashboard');
+      navigate(roleHomePages[user.role] || '/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Invalid username or password');
     } finally {

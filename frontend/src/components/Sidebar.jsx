@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Home, FileText, List, UserCheck, CheckSquare, Users, Settings, Database, Globe, MapPin, ShieldCheck } from 'lucide-react';
+import { Home, FileText, List, UserCheck, CheckSquare, Users, Settings, Database, MapPin, ShieldCheck } from 'lucide-react';
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -34,11 +34,6 @@ export default function Sidebar() {
             </NavLink>
           </li>
         ))}
-        <li>
-          <a href="/portal" target="_blank" rel="noreferrer">
-            <Globe size={20} /> Web Map Portal (Public)
-          </a>
-        </li>
       </ul>
     </aside>
   );
