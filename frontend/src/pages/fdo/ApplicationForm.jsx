@@ -85,6 +85,8 @@ export default function ApplicationForm() {
     { id: 2, docType: 'Kebele Identification' }
   ]);
   const [selectedDocInput, setSelectedDocInput] = useState('Title Certificate');
+  // FDO selects the required types, while the document officer handles filing later.
+  const documentHandlingEnabled = false;
   // Map of docEntry.id → File object chosen by FDO
   const [docFiles, setDocFiles] = useState({});
   // Track which entries were flagged missing on submit attempt
@@ -222,7 +224,7 @@ export default function ApplicationForm() {
     }
     const newId = Date.now();
     setRequiredDocsList([...requiredDocsList, { id: newId, docType: selectedDocInput }]);
-    toast.success('Document added — please attach the file below');
+    toast.success('Document type added to the checklist');
   };
 
   const handleRemoveDocument = (docId) => {
@@ -294,24 +296,7 @@ export default function ApplicationForm() {
       return;
     }
 
-    // ── DOCUMENT FILE VALIDATION ──────────────────────────────────────────────
-    // Every document in the required list must have a file attached
-    if (!isEditMode) {
-      const missing = {};
-      requiredDocsList.forEach(doc => {
-        if (!docFiles[doc.id]) {
-          missing[doc.id] = true;
-        }
-      });
-
-      if (Object.keys(missing).length > 0) {
-        setDocErrors(missing);
-        toast.error(`❌ Please attach a file for all ${Object.keys(missing).length} required document(s) before saving.`);
-        // Scroll to required docs section
-        document.getElementById('required-docs-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-      }
-    }
+    // FDO only selects the required document types; final filing is handled later.
     // ─────────────────────────────────────────────────────────────────────────
 
     setLoading(true);
@@ -340,12 +325,12 @@ export default function ApplicationForm() {
         const { data } = await API.post('/applications', payload);
         const newAppId = data.id || (data.data && data.data.id);
 
-        // Step 2: Upload each required document file
-        if (newAppId && requiredDocsList.length > 0) {
-          const uploadErrors = [];
+        // Step 2: Add required document records for the later filing step.
+        if (documentHandlingEnabled && newAppId && requiredDocsList.length > 0) {
+          const filingErrors = [];
           for (const doc of requiredDocsList) {
             const file = docFiles[doc.id];
-            if (!file) continue; // already validated above
+            if (!file) continue;
             const fd = new FormData();
             fd.append('file', file);
             fd.append('application_id', newAppId);
@@ -356,16 +341,16 @@ export default function ApplicationForm() {
               await API.post('/documents/upload', fd, {
                 headers: { 'Content-Type': 'multipart/form-data' }
               });
-            } catch (uploadErr) {
-              uploadErrors.push(doc.docType);
-              console.error(`Upload failed for ${doc.docType}:`, uploadErr);
+            } catch (error) {
+              filingErrors.push(doc.docType);
+              console.error(`Document filing failed for ${doc.docType}:`, error);
             }
           }
 
-          if (uploadErrors.length > 0) {
-            toast.error(`⚠️ Application created but failed to upload: ${uploadErrors.join(', ')}`);
+          if (filingErrors.length > 0) {
+            toast.error(`⚠️ Application created but documents could not be filed: ${filingErrors.join(', ')}`);
           } else {
-            toast.success(`✅ All ${requiredDocsList.length} document(s) uploaded successfully`);
+            toast.success(`✅ All ${requiredDocsList.length} document(s) were filed successfully`);
           }
         }
 
@@ -484,7 +469,6 @@ export default function ApplicationForm() {
               </select>
             </div>
 
-            {/* Required Document Type & Add */}
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Required Document Type:*</label>
               <div className="flex gap-2">
@@ -587,13 +571,10 @@ export default function ApplicationForm() {
               </div>
             </div>
 
-            {/* Required Documents Table with File Upload */}
+            {/* Required Documents Table */}
             <div className="pt-2" id="required-docs-section">
               <span className="font-semibold text-slate-700 text-xs block mb-1.5">
                 Required Documents
-                {!isEditMode && (
-                  <span className="ml-2 text-rose-600 font-normal">(file upload required for each)</span>
-                )}
               </span>
               <div className="border border-slate-200 rounded overflow-hidden">
                 <table className="w-full text-left text-xs border-collapse">
@@ -601,58 +582,20 @@ export default function ApplicationForm() {
                     <tr className="bg-slate-100 border-b border-slate-200 text-slate-700">
                       <th className="p-2 w-8">No</th>
                       <th className="p-2">Document Type</th>
-                      {!isEditMode && <th className="p-2">Attach File <span className="text-rose-500">*</span></th>}
                       <th className="p-2 text-right w-16">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {requiredDocsList.length === 0 ? (
                       <tr>
-                        <td colSpan={isEditMode ? 3 : 4} className="p-3 text-center text-slate-400">No documents attached.</td>
+                        <td colSpan="3" className="p-3 text-center text-slate-400">No documents attached.</td>
                       </tr>
                     ) : (
                       requiredDocsList.map((d, idx) => {
-                        const hasFile = Boolean(docFiles[d.id]);
-                        const hasError = Boolean(docErrors[d.id]);
                         return (
-                          <tr
-                            key={d.id}
-                            className={`border-b border-slate-100 ${hasError ? 'bg-rose-50' : hasFile ? 'bg-emerald-50' : 'hover:bg-slate-50'}`}
-                          >
+                          <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50">
                             <td className="p-2 text-slate-600">{idx + 1}</td>
-                            <td className="p-2 font-medium text-slate-800">
-                              <div className="flex items-center gap-1.5">
-                                {hasError && <span className="text-rose-500 text-base leading-none">●</span>}
-                                {hasFile && <span className="text-emerald-500 text-base leading-none">✓</span>}
-                                {d.docType}
-                              </div>
-                            </td>
-                            {!isEditMode && (
-                              <td className="p-2">
-                                <label className="flex flex-col gap-0.5 cursor-pointer">
-                                  <input
-                                    type="file"
-                                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                                    className="hidden"
-                                    onChange={e => handleDocFileChange(d.id, e.target.files?.[0] || null)}
-                                  />
-                                  <span
-                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded border text-xs font-medium transition
-                                      ${hasError
-                                        ? 'border-rose-400 bg-rose-100 text-rose-700 hover:bg-rose-200'
-                                        : hasFile
-                                          ? 'border-emerald-400 bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                                          : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
-                                      }`}
-                                  >
-                                    {hasFile ? '📎 ' + docFiles[d.id].name.slice(0, 22) + (docFiles[d.id].name.length > 22 ? '…' : '') : '📂 Choose File'}
-                                  </span>
-                                  {hasError && (
-                                    <span className="text-rose-500 text-xs">File required!</span>
-                                  )}
-                                </label>
-                              </td>
-                            )}
+                            <td className="p-2 font-medium text-slate-800">{d.docType}</td>
                             <td className="p-2 text-right">
                               <button
                                 type="button"
@@ -670,16 +613,6 @@ export default function ApplicationForm() {
                   </tbody>
                 </table>
               </div>
-              {/* Summary alert if there are missing files */}
-              {!isEditMode && Object.values(docErrors).some(Boolean) && (
-                <div className="mt-2 p-2 bg-rose-50 border border-rose-300 text-rose-700 rounded text-xs flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 shrink-0" />
-                  <span>
-                    <strong>{Object.values(docErrors).filter(Boolean).length} document(s)</strong> missing a file.
-                    Please choose a file for each highlighted row before saving.
-                  </span>
-                </div>
-              )}
             </div>
 
 

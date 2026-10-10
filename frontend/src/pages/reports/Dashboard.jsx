@@ -190,7 +190,7 @@ export default function Dashboard() {
         {/* Chart 1: Lead Time Report */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
           <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2">
-            Average Lead Time by Application Type (Hours) - Section 6.3.1
+            Average Lead Time by Application Type (Hours)
           </h3>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={leadTime.map(l => ({ name: (l.application_type || l.name || '').replace(/_/g,' '), hours: parseFloat(l.avg_lead_time_hours || l.hours || 0) }))}>
@@ -206,7 +206,7 @@ export default function Dashboard() {
         {/* Chart 2: Property Right Report */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
           <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2">
-            Property Right Distribution - Section 6.3.4
+            Property Right Distribution
           </h3>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
@@ -222,7 +222,7 @@ export default function Dashboard() {
         {/* Chart 3: Employee Performance */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
           <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2">
-            Employee Performance (Transactions Processed) - Section 6.3.3
+            Employee Performance (Transactions Processed)
           </h3>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={empPerf.map(e => ({ name: e.full_name, transactions: parseInt(e.transactions_processed) }))} layout="vertical">
@@ -238,7 +238,7 @@ export default function Dashboard() {
         {/* Chart 4: Property Owner Demographics */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
           <h3 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2">
-            Property Owner Demographics by Age & Gender - Section 6.3.5
+            Property Owner Demographics by Age & Gender
           </h3>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={demographicsData}>

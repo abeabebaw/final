@@ -88,7 +88,7 @@ export default function Navbar() {
           <User className="w-3.5 h-3.5 text-slate-500" />
           <span>{user?.email || 'user@crprs.gov.et'}</span>
         </div>
-        <button className="btn btn-danger btn-sm flex items-center gap-1" onClick={logout}>
+        <button className="btn btn-success btn-sm flex items-center gap-1" onClick={logout}>
           <LogOut className="w-3.5 h-3.5" /> Logout
         </button>
       </div>

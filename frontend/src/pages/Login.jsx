@@ -42,48 +42,45 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Dynamic Background Accents */}
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl"></div>
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-emerald-600/20 rounded-full blur-3xl"></div>
+    <div className="min-h-screen bg-[#123f32] flex items-center justify-center p-4 relative overflow-hidden font-sans">
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-[#d8ae47]/20 rounded-full blur-3xl"></div>
+      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-[#2d5046]/30 rounded-full blur-3xl"></div>
 
-      <div className="max-w-md w-full bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl shadow-2xl p-8 z-10 space-y-6">
-        {/* Logo & Header */}
+      <div className="max-w-md w-full bg-[#0d2f2a]/90 border border-[#2d5046] backdrop-blur-xl rounded-2xl shadow-2xl p-8 z-10 space-y-6">
         <div className="text-center space-y-2">
-          <div className="inline-flex p-3 bg-blue-900/50 border border-blue-700/50 rounded-2xl text-amber-400 mb-1">
+          <div className="inline-flex p-3 bg-[#123f32] border border-[#d8ae47]/70 rounded-2xl text-[#f3d77b] mb-1">
             <Compass className="w-8 h-8 animate-spin-slow" />
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">LOGIN TO NCRPRS</h1>
-          <p className="text-xs text-slate-400">National Cadastre & Real Property Registration System</p>
+          <p className="text-xs text-[#cfe0d5]">National Cadastre & Real Property Registration System</p>
         </div>
 
-        {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Username</label>
+            <label className="block text-xs font-semibold text-[#dfece6] mb-1">Username</label>
             <div className="relative">
-              <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+              <User className="w-4 h-4 text-[#9ab9a5] absolute left-3 top-3" />
               <input
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
                 placeholder="Enter username"
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                className="w-full pl-9 pr-3 py-2.5 bg-[#123f32] border border-[#2d5046] rounded-lg text-white text-xs focus:outline-none focus:border-[#d8ae47] focus:ring-1 focus:ring-[#d8ae47] transition"
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
+            <label className="block text-xs font-semibold text-[#dfece6] mb-1">Password</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+              <Lock className="w-4 h-4 text-[#9ab9a5] absolute left-3 top-3" />
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="Enter password"
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                className="w-full pl-9 pr-3 py-2.5 bg-[#123f32] border border-[#2d5046] rounded-lg text-white text-xs focus:outline-none focus:border-[#d8ae47] focus:ring-1 focus:ring-[#d8ae47] transition"
                 required
               />
             </div>
@@ -92,24 +89,23 @@ export default function Login() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs shadow-lg flex justify-center items-center gap-2 transition"
+            className="w-full py-3 bg-[#d8ae47] hover:bg-[#f3d77b] text-[#123f32] font-bold rounded-lg text-xs shadow-lg flex justify-center items-center gap-2 transition"
           >
             {loading ? 'Authenticating...' : 'Sign In'} <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        {/* Quick Demo Login Bar */}
-        <div className="pt-4 border-t border-slate-800/80 space-y-2">
-          <div className="text-[10px] text-slate-400 font-semibold uppercase text-center tracking-wider">Quick Demo Logins</div>
+        <div className="pt-4 border-t border-[#2d5046]/80 space-y-2">
+          <div className="text-[10px] text-[#cfe0d5] font-semibold uppercase text-center tracking-wider">Quick Demo Logins</div>
           <div className="grid grid-cols-4 gap-1.5 text-[10px]">
-            <button onClick={() => handleQuickLogin('fdo', 'fdo123')} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded text-center font-bold">FDO</button>
-            <button onClick={() => handleQuickLogin('do', 'do123')} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded text-center font-bold">DO</button>
-            <button onClick={() => handleQuickLogin('ro', 'ro123')} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded text-center font-bold">RO</button>
-            <button onClick={() => handleQuickLogin('sro', 'sro123')} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-purple-400 rounded text-center font-bold">SRO</button>
+            <button onClick={() => handleQuickLogin('fdo', 'fdo123')} className="p-1.5 bg-[#123f32] hover:bg-[#1f5b47] text-[#f3d77b] rounded text-center font-bold">FDO</button>
+            <button onClick={() => handleQuickLogin('do', 'do123')} className="p-1.5 bg-[#123f32] hover:bg-[#1f5b47] text-[#d8ae47] rounded text-center font-bold">DO</button>
+            <button onClick={() => handleQuickLogin('ro', 'ro123')} className="p-1.5 bg-[#123f32] hover:bg-[#1f5b47] text-[#cfe0d5] rounded text-center font-bold">RO</button>
+            <button onClick={() => handleQuickLogin('sro', 'sro123')} className="p-1.5 bg-[#123f32] hover:bg-[#1f5b47] text-[#f3d77b] rounded text-center font-bold">SRO</button>
           </div>
           <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-            <button onClick={() => handleQuickLogin('admin', 'admin123')} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-rose-400 rounded text-center font-bold">Admin</button>
-            <button onClick={() => handleQuickLogin('go', 'go123')} className="p-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded text-center font-bold">GIS (GO)</button>
+            <button onClick={() => handleQuickLogin('admin', 'admin123')} className="p-1.5 bg-[#123f32] hover:bg-[#1f5b47] text-[#f3d77b] rounded text-center font-bold">Admin</button>
+            <button onClick={() => handleQuickLogin('go', 'go123')} className="p-1.5 bg-[#123f32] hover:bg-[#1f5b47] text-[#dfece6] rounded text-center font-bold">GIS (GO)</button>
           </div>
         </div>
       </div>
