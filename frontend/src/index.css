@@ -883,6 +883,10 @@ tbody tr:hover {
   box-shadow: var(--shadow-sm);
 }
 
+.application-table tbody tr:hover {
+  transform: none;
+}
+
 tbody tr:last-child {
   border-bottom: none;
 }

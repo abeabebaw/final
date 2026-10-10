@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import API from '../../api/client';
@@ -39,6 +40,8 @@ export default function ApplicationList() {
   // Active Action Menu Popover State
   const [openActionId, setOpenActionId] = useState(null);
   const [actionMenuPosition, setActionMenuPosition] = useState(null);
+  const actionTriggerRef = useRef(null);
+  const actionMenuRef = useRef(null);
 
   // Modal States
   const [selectedApp, setSelectedApp] = useState(null);
@@ -51,7 +54,27 @@ export default function ApplicationList() {
   const [showNewTxnModal, setShowNewTxnModal] = useState(false);
   const [selectedTxnType, setSelectedTxnType] = useState('REGISTRATION_OF_LEASEHOLD');
 
-  const actionRef = useRef(null);
+  const updateActionMenuPosition = (trigger) => {
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const viewportPadding = 8;
+    const menuWidth = Math.min(240, window.innerWidth - viewportPadding * 2);
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const spaceAbove = rect.top - viewportPadding;
+    const openAbove = spaceBelow < 240 && spaceAbove > spaceBelow;
+    const availableHeight = openAbove ? spaceAbove : spaceBelow;
+
+    setActionMenuPosition({
+      top: openAbove ? undefined : rect.bottom + 4,
+      bottom: openAbove ? window.innerHeight - rect.top + 4 : undefined,
+      left: Math.max(
+        viewportPadding,
+        Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - viewportPadding)
+      ),
+      maxHeight: Math.max(0, Math.min(400, availableHeight))
+    });
+  };
 
   const fetchApps = async () => {
     setLoading(true);
@@ -87,13 +110,29 @@ export default function ApplicationList() {
   // Close Action Menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (actionRef.current && !actionRef.current.contains(e.target)) {
+      if (
+        !actionTriggerRef.current?.contains(e.target) &&
+        !actionMenuRef.current?.contains(e.target)
+      ) {
         setOpenActionId(null);
+        setActionMenuPosition(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (openActionId === null) return undefined;
+
+    const repositionMenu = () => updateActionMenuPosition(actionTriggerRef.current);
+    window.addEventListener('resize', repositionMenu);
+    window.addEventListener('scroll', repositionMenu, true);
+    return () => {
+      window.removeEventListener('resize', repositionMenu);
+      window.removeEventListener('scroll', repositionMenu, true);
+    };
+  }, [openActionId]);
 
   const statusTabButtons = [
     { label: 'ALL STATUS', value: '' },
@@ -326,11 +365,8 @@ export default function ApplicationList() {
                                 return;
                               }
 
-                              const buttonRect = e.currentTarget.getBoundingClientRect();
-                              setActionMenuPosition({
-                                top: buttonRect.bottom + 4,
-                                right: Math.max(8, window.innerWidth - buttonRect.right)
-                              });
+                              actionTriggerRef.current = e.currentTarget;
+                              updateActionMenuPosition(e.currentTarget);
                               setOpenActionId(appId);
                             }}
                             aria-label={`Actions for application ${appNum}`}
@@ -342,16 +378,18 @@ export default function ApplicationList() {
                           </button>
 
                           {/* Action Menu Popover (Matching Screenshot 2 Table Commands) */}
-                          {isOpen && (
-                            <div 
-                              className="application-action-menu bg-white border border-slate-300 rounded-lg shadow-xl py-1 text-left text-xs divide-y divide-slate-100"
+                          {isOpen && actionMenuPosition && createPortal(
+                            <div
+                              ref={actionMenuRef}
+                              className="application-action-menu bg-white border border-slate-300 rounded-lg shadow-xl py-1 text-left text-sm divide-y divide-slate-100"
                               style={{ 
                                 position: 'fixed',
                                 zIndex: 9999,
-                                minWidth: '200px',
-                                top: actionMenuPosition?.top ?? 0,
-                                right: actionMenuPosition?.right ?? 8,
-                                maxHeight: '400px',
+                                width: '240px',
+                                top: actionMenuPosition.top,
+                                bottom: actionMenuPosition.bottom,
+                                left: actionMenuPosition.left,
+                                maxHeight: actionMenuPosition.maxHeight,
                                 overflowY: 'auto'
                               }}
                             >
@@ -373,7 +411,7 @@ export default function ApplicationList() {
                                   >
                                     <Printer className="w-3.5 h-3.5 text-blue-600" /> Print Receipt
                                   </button>
-                                )}
+                              )}
                                 
                                 <button
                                   onClick={() => { navigate(`/applications/${appId}/edit`); setOpenActionId(null); }}
@@ -479,8 +517,7 @@ export default function ApplicationList() {
                               </button>
                             </div>
 
-                          </div>
-                        )}
+                          </div>, document.body)}
                         </div>
                       </td>
                     </tr>
