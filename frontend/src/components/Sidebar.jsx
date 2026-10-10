@@ -7,7 +7,7 @@ export default function Sidebar() {
   const role = user?.role;
 
   const menuItems = [
-    { path: '/dashboard', label: 'Dashboard & Reports', icon: Home, roles: ['FDO','RO','SRO','ADMIN','DO','GO','SGO'] },
+    { path: '/dashboard', label: 'Dashboard & Reports', icon: Home, roles: ['ADMIN'] },
     { path: '/applications', label: 'Applications (FDO)', icon: FileText, roles: ['FDO','ADMIN'] },
     { path: '/transactions', label: 'Transactions Queue', icon: List, roles: ['FDO','RO','SRO','GO','SGO','ADMIN'] },
     { path: '/recs', label: 'RECS GIS Cadastre', icon: MapPin, roles: ['GO','SGO','RO','SRO','ADMIN'] },
@@ -17,7 +17,7 @@ export default function Sidebar() {
     { path: '/admin/users', label: 'User Management', icon: Users, roles: ['ADMIN'] },
     { path: '/admin/lookups', label: 'Lookup Management', icon: Database, roles: ['ADMIN'] },
     { path: '/admin/required-documents', label: 'Required Documents', icon: Settings, roles: ['ADMIN'] },
-    { path: '/admin/audit-logs', label: 'Audit Trail & Monitoring', icon: ShieldCheck, roles: ['FDO','SRO','ADMIN'] },
+    { path: '/admin/audit-logs', label: 'Audit Trail & Monitoring', icon: ShieldCheck, roles: ['ADMIN'] },
   ];
 
   return (

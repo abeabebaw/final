@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import API from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import toast from 'react-hot-toast';
@@ -27,6 +28,7 @@ const APP_TYPES = [
 
 export default function ApplicationList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [apps, setApps] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 100, pages: 1 });
   const [search, setSearch] = useState('');
@@ -166,7 +168,8 @@ export default function ApplicationList() {
   return (
     <div className="space-y-5">
       
-      {/* Top Header Navigation (Matching Screenshot 1) */}
+      {/* Keep the legacy page navigation within the administrator workspace. */}
+      {user?.role === 'ADMIN' && (
       <div className="bg-slate-900 text-white p-3 rounded-xl flex flex-wrap justify-between items-center shadow">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
@@ -190,6 +193,7 @@ export default function ApplicationList() {
           </Link>
         </div>
       </div>
+      )}
 
       {/* Title Header */}
       <div className="flex justify-between items-center">
@@ -212,6 +216,7 @@ export default function ApplicationList() {
               <button
                 key={tab.value}
                 onClick={() => setStatusFilter(tab.value)}
+                aria-pressed={statusFilter === tab.value}
                 className={`px-3 py-1.5 font-bold rounded-lg transition border ${
                   statusFilter === tab.value 
                     ? 'bg-blue-900 text-white border-blue-900 shadow-sm' 
@@ -228,6 +233,7 @@ export default function ApplicationList() {
             <select
               value={appTypeFilter}
               onChange={e => setAppTypeFilter(e.target.value)}
+              aria-label="Filter by application type"
               className="p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium focus:outline-none focus:border-blue-600 focus:bg-white"
             >
               {APP_TYPES.map(t => (
@@ -236,17 +242,23 @@ export default function ApplicationList() {
             </select>
 
             {/* Search Input */}
-            <div className="relative w-full md:w-64">
+            <form
+              className="application-search relative flex w-full md:w-auto"
+              onSubmit={e => { e.preventDefault(); fetchApps(); }}
+            >
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
               <input
+                aria-label="Search applications by ID or applicant name"
                 type="text"
                 placeholder="Search by Application id or Applicant Name..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && fetchApps()}
-                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-blue-600 focus:bg-white"
+                className="w-full min-w-0 pl-8 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:outline-none focus:border-blue-600 focus:bg-white md:w-64"
               />
-            </div>
+              <button type="submit" className="ml-2 px-3 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-semibold">
+                Search
+              </button>
+            </form>
           </div>
 
         </div>
@@ -254,18 +266,18 @@ export default function ApplicationList() {
 
       {/* Main Data Table (Matching Screenshot 1 & Screenshot 2) */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm" style={{ position: 'relative' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="w-full text-left text-xs border-collapse" style={{ position: 'relative' }}>
+        <div className="application-table-scroll" style={{ overflowX: 'auto' }}>
+          <table className="w-full text-left text-sm border-collapse application-table" style={{ position: 'relative' }}>
             <thead>
               <tr className="bg-slate-100 text-slate-700 border-b border-slate-300 font-bold">
-                <th className="p-3 w-12 text-center">No</th>
-                <th className="p-3">Application Id</th>
-                <th className="p-3">Applicant Name</th>
-                <th className="p-3">Application Type</th>
-                <th className="p-3">Application Status</th>
-                <th className="p-3">Creation Date</th>
-                <th className="p-3">Modification Date</th>
-                <th className="p-3 text-center w-24">Action</th>
+                <th scope="col" className="p-3 w-12 text-center">No</th>
+                <th scope="col" className="p-3">Application Id</th>
+                <th scope="col" className="p-3">Applicant Name</th>
+                <th scope="col" className="p-3">Application Type</th>
+                <th scope="col" className="p-3">Application Status</th>
+                <th scope="col" className="p-3">Creation Date</th>
+                <th scope="col" className="p-3">Modification Date</th>
+                <th scope="col" className="p-3 text-center w-24">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -286,8 +298,10 @@ export default function ApplicationList() {
                   const status = a.status || 'SUBMITTED';
                   const transactionCount = a._count?.transactions || 0;
                   const hasTransactions = transactionCount > 0;
-                  const creationDate = new Date(a.submitted_at || a.createdAt || Date.now()).toLocaleDateString();
-                  const modDate = new Date(a.updatedAt || a.submitted_at || Date.now()).toLocaleDateString();
+                  const createdAt = a.created_at || a.createdAt || a.submitted_at;
+                  const updatedAt = a.updated_at || a.updatedAt || createdAt;
+                  const creationDate = createdAt && !Number.isNaN(Date.parse(createdAt)) ? new Date(createdAt).toLocaleDateString() : '-';
+                  const modDate = updatedAt && !Number.isNaN(Date.parse(updatedAt)) ? new Date(updatedAt).toLocaleDateString() : '-';
                   const isOpen = openActionId === appId;
 
                   return (
@@ -319,6 +333,8 @@ export default function ApplicationList() {
                               });
                               setOpenActionId(appId);
                             }}
+                            aria-label={`Actions for application ${appNum}`}
+                            aria-expanded={isOpen}
                             className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded flex items-center gap-1 mx-auto text-xs shadow-sm transition-colors"
                             style={{ transform: 'none' }}
                           >

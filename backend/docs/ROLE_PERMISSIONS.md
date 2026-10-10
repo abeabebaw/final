@@ -161,7 +161,8 @@ Based on the **CRPRS User Manual (R2V2)**, this document details the complete li
   - **Geometric Reference:** Sets Coordinate Reference Systems (e.g., EPSG:20137 / Adindan / UTM Zone 37N).
   - **IP Address Configuration:** Configures server IP addresses for database and GeoServer.
   - **GeoServer Configuration:** Manages connections to map server instances.
-- **System Reports:** Generates system analytics (lead time, employee performance, queue waiting time).
+- **System Reports:** Generates system analytics (lead time, employee performance, queue waiting time); accessible only to System Administrators.
+- **Audit Trail & Monitoring:** Reviews audit records and monitoring statistics; accessible only to System Administrators.
 
 ---
 
@@ -200,6 +201,7 @@ Based on the **CRPRS User Manual (R2V2)**, this document details the complete li
 | | SGO Approve / Reject Spatial Edit | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | **Administration** | User & Role Management | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | | Lookup & Business Rule Config | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| | System Reports & Performance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| | Dashboard Analytics & Reports | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| | Audit Trail & Monitoring | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | **Web Portal** | Public Layer & WMS Uploads | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | | Announcements & Public Files | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |

@@ -56,7 +56,7 @@ export default function App() {
           <Layout />
         </ProtectedRoute>
       }>
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="dashboard" element={<ProtectedRoute roles={['ADMIN']}><Dashboard /></ProtectedRoute>} />
         
         {/* FDO Routes */}
         <Route path="applications" element={<ProtectedRoute roles={['FDO','ADMIN']}><ApplicationList /></ProtectedRoute>} />
@@ -85,7 +85,7 @@ export default function App() {
         <Route path="admin/required-documents" element={<ProtectedRoute roles={['ADMIN']}><RequiredDocuments /></ProtectedRoute>} />
         <Route path="admin/business-rules" element={<ProtectedRoute roles={['ADMIN']}><BusinessRule /></ProtectedRoute>} />
         <Route path="admin/configurations" element={<ProtectedRoute roles={['ADMIN']}><Configuration /></ProtectedRoute>} />
-        <Route path="admin/audit-logs" element={<ProtectedRoute roles={['ADMIN','FDO','SRO','RO','GO','SGO']}><AuditLogs /></ProtectedRoute>} />
+        <Route path="admin/audit-logs" element={<ProtectedRoute roles={['ADMIN']}><AuditLogs /></ProtectedRoute>} />
       </Route>
     </Routes>
   );

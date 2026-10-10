@@ -5,11 +5,11 @@ const { authenticate } = require('../middleware/auth');
 const { authorize } = require('../middleware/role');
 const ctrl = require('../controllers/report.controller');
 
-router.get('/dashboard', authenticate, authorize('FDO','DO','RO','SRO','GO','SGO','ADMIN'), ctrl.dashboard);
-router.get('/lead-time', authenticate, authorize('FDO','DO','RO','SRO','GO','SGO','ADMIN'), ctrl.leadTime);
-router.get('/waiting-time', authenticate, authorize('FDO','DO','RO','SRO','GO','SGO','ADMIN'), ctrl.waitingTime);
-router.get('/employee-performance', authenticate, authorize('FDO','DO','RO','SRO','GO','SGO','ADMIN'), ctrl.employeePerformance);
-router.get('/property-right', authenticate, authorize('FDO','DO','RO','SRO','GO','SGO','ADMIN'), ctrl.propertyRightReport);
-router.get('/property-owner', authenticate, authorize('FDO','DO','RO','SRO','GO','SGO','ADMIN'), ctrl.propertyOwnerReport);
+router.get('/dashboard', authenticate, authorize('ADMIN'), ctrl.dashboard);
+router.get('/lead-time', authenticate, authorize('ADMIN'), ctrl.leadTime);
+router.get('/waiting-time', authenticate, authorize('ADMIN'), ctrl.waitingTime);
+router.get('/employee-performance', authenticate, authorize('ADMIN'), ctrl.employeePerformance);
+router.get('/property-right', authenticate, authorize('ADMIN'), ctrl.propertyRightReport);
+router.get('/property-owner', authenticate, authorize('ADMIN'), ctrl.propertyOwnerReport);
 
 module.exports = router;
