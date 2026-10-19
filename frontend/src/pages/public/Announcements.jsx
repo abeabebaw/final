@@ -17,7 +17,7 @@ export default function PublicAnnouncements() {
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <nav className="bg-blue-950 text-white px-6 py-4 shadow-md flex justify-between items-center">
         <a href="/portal" className="text-lg font-bold text-amber-400 flex items-center gap-2">
-          CRPRS National Real Property Portal
+          Kombolcha City Real Property Portal
         </a>
         <a href="/portal" className="text-xs bg-blue-900 hover:bg-blue-800 px-3 py-1.5 rounded text-white flex items-center gap-1 transition">
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Portal

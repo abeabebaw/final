@@ -137,8 +137,12 @@ export default function ApplicationList() {
   const statusTabButtons = [
     { label: 'ALL STATUS', value: '' },
     { label: 'SUBMITTED', value: 'SUBMITTED' },
+    { label: 'READY FOR FILE ATTACHMENT', value: 'READY_FOR_FILE_ATTACHMENT' },
+    { label: 'FILE ATTACHMENT STARTING', value: 'FILE_ATTACHMENT_STARTING' },
+    { label: 'FILE ATTACHMENT FINISHED', value: 'FILE_ATTACHMENT_FINISHED' },
     { label: 'IN PROGRESS', value: 'IN_PROGRESS' },
     { label: 'FINISHED', value: 'FINISHED' },
+    { label: 'COMPLETED', value: 'COMPLETED' },
     { label: 'WITHDRAWN', value: 'WITHDRAWN' }
   ];
 
@@ -223,48 +227,50 @@ export default function ApplicationList() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link 
-            to="/applications/new" 
-            className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-md flex items-center gap-1.5 shadow"
-          >
-            <Plus className="w-3.5 h-3.5" /> New Application
-          </Link>
-        </div>
       </div>
       )}
 
       {/* Title Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Application List</h2>
+          <h2 className="text-lg font-bold text-green-700">Application List</h2>
           <p className="text-xs text-slate-500">Front desk officer (FDO) application management portal</p>
         </div>
-        <button onClick={fetchApps} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs flex items-center gap-1">
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/applications/new"
+            className="px-3.5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold text-xs rounded-lg flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" /> New Application
+          </Link>
+          <button onClick={fetchApps} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs flex items-center gap-1">
+            <RefreshCw className="w-3.5 h-3.5" /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Filters Row (Matching Screenshot 1) */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
           
-          {/* Status Tabs */}
-          <div className="flex flex-wrap gap-1.5 text-xs">
-            {statusTabButtons.map(tab => (
-              <button
-                key={tab.value}
-                onClick={() => setStatusFilter(tab.value)}
-                aria-pressed={statusFilter === tab.value}
-                className={`px-3 py-1.5 font-bold rounded-lg transition border ${
-                  statusFilter === tab.value 
-                    ? 'bg-blue-900 text-white border-blue-900 shadow-sm' 
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          {/* Status filter */}
+          <div className="flex items-center gap-2 text-xs">
+            <label htmlFor="application-status-filter" className="font-semibold text-slate-600">Status:</label>
+            <select
+              id="application-status-filter"
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              aria-label="Filter by application status"
+              className={`p-2 border rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-green-200 ${
+                statusFilter
+                  ? 'bg-green-100 text-green-800 border-green-400'
+                  : 'bg-slate-50 text-slate-700 border-slate-300'
+              }`}
+            >
+              {statusTabButtons.map(tab => (
+                <option key={tab.value} value={tab.value}>{tab.label}</option>
+              ))}
+            </select>
           </div>
 
           {/* Application Type Dropdown Filter */}
@@ -531,8 +537,8 @@ export default function ApplicationList() {
 
       {/* Footer info matching Screenshot 1 */}
       <div className="flex justify-between items-center text-xs text-slate-500 pt-2 border-t border-slate-200">
-        <div>Copyright © INSA 2010 E.C. All rights reserved.</div>
-        <div>Version 2.0.1</div>
+        <div>Copyright ©  All rights reserved.</div>
+        <div></div>
       </div>
 
       {/* MODAL: Reject Application */}

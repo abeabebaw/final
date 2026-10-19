@@ -38,7 +38,7 @@ async function seedApplications() {
         status: 'READY_FOR_FILE_ATTACHMENT', // Ready for DO
         applicantName: 'Abebe Kebede',
         applicantType: 'LANDHOLDER',
-        applicantAddress: 'Bole, Addis Ababa',
+        applicantAddress: 'Kombolcha City',
         applicantPhone: '+251911234567',
         applicantEmail: 'abebe.k@example.com',
         applicantIdNumber: 'AA-123456',
@@ -53,7 +53,7 @@ async function seedApplications() {
         status: 'FILE_ATTACHMENT_FINISHED', // Ready for DO to digitize
         applicantName: 'Tigist Alemu',
         applicantType: 'LANDHOLDER',
-        applicantAddress: 'Kirkos, Addis Ababa',
+        applicantAddress: 'Kombolcha City',
         applicantPhone: '+251922345678',
         applicantEmail: 'tigist.a@example.com',
         applicantIdNumber: 'AA-234567',
@@ -68,7 +68,7 @@ async function seedApplications() {
         status: 'FILE_ATTACHMENT_FINISHED', // Ready for DO
         applicantName: 'Mulugeta Tadesse',
         applicantType: 'LANDHOLDER',
-        applicantAddress: 'Yeka, Addis Ababa',
+        applicantAddress: 'Kombolcha City',
         applicantPhone: '+251933456789',
         applicantEmail: 'mulugeta.t@example.com',
         applicantIdNumber: 'AA-345678',
@@ -83,7 +83,7 @@ async function seedApplications() {
         status: 'IN_PROGRESS', // DO is working on this
         applicantName: 'Hanna Girma',
         applicantType: 'LANDHOLDER',
-        applicantAddress: 'Adama, Oromia',
+        applicantAddress: 'Kombolcha City',
         applicantPhone: '+251944567890',
         applicantEmail: 'hanna.g@example.com',
         applicantIdNumber: 'OR-456789',
@@ -98,7 +98,7 @@ async function seedApplications() {
         status: 'SUBMITTED',
         applicantName: 'Solomon Haile',
         applicantType: 'LANDHOLDER',
-        applicantAddress: 'Arada, Addis Ababa',
+        applicantAddress: 'Kombolcha City',
         applicantPhone: '+251955678901',
         applicantEmail: 'solomon.h@example.com',
         applicantIdNumber: 'AA-567890',

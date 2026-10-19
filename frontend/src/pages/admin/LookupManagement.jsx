@@ -81,7 +81,7 @@ export default function LookupManagement() {
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Database className="w-6 h-6 text-blue-600" /> System Administration: Lookup Management
           </h2>
-          <p className="text-xs text-slate-500 font-medium">Manage system lookup values without modifying codebase (Section 4.2.1 of CRPRS)</p>
+          <p className="text-xs text-slate-500 font-medium">Manage system lookup values without modifying codebase</p>
         </div>
       </div>
 

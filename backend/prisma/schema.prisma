@@ -216,11 +216,16 @@ model Parcel {
   geometryWkt      String?             @map("geometry_wkt")
   isRegistered     Boolean             @default(false) @map("is_registered")
   registrationDate DateTime?           @map("registration_date")
+  parentParcelId    String?             @map("parent_parcel_id") @db.Uuid
+  splitTransactionId String?            @map("split_transaction_id") @db.Uuid
   createdAt        DateTime            @default(now()) @map("created_at")
   updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at")
   
   applications     Application[]
   transactions     Transaction[]
+  parentParcel     Parcel?             @relation("ParcelSplit", fields: [parentParcelId], references: [id], onDelete: SetNull)
+  splitChildren    Parcel[]            @relation("ParcelSplit")
+  splitTransaction Transaction?        @relation("TransactionSplitParcels", fields: [splitTransactionId], references: [id], onDelete: SetNull)
   parties          Party[]
   rights           Right[]
   mortgages        Mortgage[]
@@ -232,6 +237,7 @@ model Parcel {
   servitudes       Servitude[]
 
   @@index([parcelCode])
+  @@index([splitTransactionId], map: "idx_parcels_split_transaction")
   @@map("parcels")
 }
 
@@ -249,6 +255,7 @@ model Application {
   applicantIdNumber  String?           @map("applicant_id_number") @db.VarChar(50)
   applicantIdType    String?           @map("applicant_id_type") @db.VarChar(50)
   description        String?
+  requiredDocumentTypes String[]       @default([]) @map("required_document_types")
   submittedBy        String?           @map("submitted_by") @db.Uuid
   submittedAt        DateTime          @default(now()) @map("submitted_at")
   withdrawnReason    String?           @map("withdrawn_reason")
@@ -293,6 +300,7 @@ model Transaction {
   
   application            Application?      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   parcel                 Parcel?           @relation(fields: [parcelId], references: [id])
+  splitParcels           Parcel[]          @relation("TransactionSplitParcels")
   assignedUser           User?             @relation("AssignedTo", fields: [assignedTo], references: [id])
   creator                User?             @relation("CreatedBy", fields: [createdBy], references: [id])
   documents              Document[]
@@ -714,4 +722,3 @@ model LoginAttempt {
   @@index([username, createdAt])
   @@map("login_attempts")
 }
-

@@ -10,28 +10,13 @@ import toast from 'react-hot-toast';
 export default function PublicHome() {
   const [activePortalTab, setActivePortalTab] = useState('home'); // home, status, layers, documents, services, announcements, admin
   const [announcements, setAnnouncements] = useState([]);
+  const [publicServices, setPublicServices] = useState([]);
+  const [publicDocuments, setPublicDocuments] = useState([]);
   
   // Application Status Tracking State
-  const [searchCity, setSearchCity] = useState('Addis Ababa');
   const [searchAppId, setSearchAppId] = useState('');
   const [statusResult, setStatusResult] = useState(null);
   const [isSearchingStatus, setIsSearchingStatus] = useState(false);
-
-  // Downloadable Documents
-  const documentsList = [
-    { title: 'Land Registration Regulation 324/2014', category: 'General Proclamation', format: 'PDF', size: '2.4 MB' },
-    { title: 'Urban Landholding Proclamation 818/2014', category: 'Legal Framework', format: 'PDF', size: '1.8 MB' },
-    { title: 'First Registration Service Application Form 19', category: 'Application Form', format: 'PDF', size: '450 KB' },
-    { title: 'Mortgage & Restriction Registration Form 22', category: 'Application Form', format: 'PDF', size: '320 KB' }
-  ];
-
-  // Services Catalog
-  const servicesCatalog = [
-    { name: 'First Registration of Leasehold / Possession', reqDocs: 'Kebele ID, Adjudication Certificate, Site Plan', standardTime: '3 Days' },
-    { name: 'Subsequent Registration of Mortgage', reqDocs: 'Title Certificate, Bank Loan Agreement', standardTime: '1 Day' },
-    { name: 'Parcel Split & Boundary Resizing', reqDocs: 'Original Title, Approved Survey Plan, Kebele ID', standardTime: '5 Days' },
-    { name: 'Court Injunction Registration / Release', reqDocs: 'Official Court Order Letter', standardTime: '1 Day' }
-  ];
 
   useEffect(() => {
     fetchPublicData();
@@ -39,12 +24,27 @@ export default function PublicHome() {
 
   const fetchPublicData = async () => {
     try {
-      const { data } = await API.get('/public/announcements');
-      setAnnouncements(Array.isArray(data) ? data : []);
+      const [announcementsRes, servicesRes, documentsRes] = await Promise.all([
+        API.get('/public/announcements'),
+        API.get('/public/services'),
+        API.get('/public/documents')
+      ]);
+
+      setAnnouncements(Array.isArray(announcementsRes.data) ? announcementsRes.data : []);
+      setPublicServices(Array.isArray(servicesRes.data) ? servicesRes.data : []);
+      setPublicDocuments(Array.isArray(documentsRes.data) ? documentsRes.data : []);
     } catch (err) {
       setAnnouncements([
         { id: '1', title: 'New Title Certificate Standard Issued', published_at: new Date(), content: 'FULLPRIA has officially issued updated security features for national title certificates.' },
-        { id: '2', title: 'A Modern Cadastre System Built Locally', published_at: new Date(), content: 'National urban land registration system deployed across key Ethiopian cities.' }
+        { id: '2', title: 'Kombolcha City Cadastre System', published_at: new Date(), content: 'Digital land registration and cadastral services for Kombolcha City.' }
+      ]);
+      setPublicServices([
+        { id: 'srv-1', service_name: 'First Registration of Real Property', required_documents: 'Kebele ID, Adjudication Certificate, Site Plan', processing_time_hours: 72 },
+        { id: 'srv-2', service_name: 'Mortgage Registration', required_documents: 'Title Certificate, Loan Agreement', processing_time_hours: 24 }
+      ]);
+      setPublicDocuments([
+        { id: 'doc-1', title: 'Land Registration Regulation 324/2014', document_category: 'Legal Framework', file_path: '#', file_name: 'Land Registration Regulation 324_2014.pdf' },
+        { id: 'doc-2', title: 'First Registration Service Application Form 19', document_category: 'Application Form', file_path: '#', file_name: 'Form_19.pdf' }
       ]);
     }
   };
@@ -66,7 +66,7 @@ export default function PublicHome() {
         applicantName: 'Alemayehu Solomon Alemu',
         applicationType: 'First Registration',
         status: 'IN_PROGRESS',
-        city: searchCity,
+        city: 'Kombolcha',
         submittedAt: '2026-08-01',
         parcelCode: 'SN001010106060'
       });
@@ -84,8 +84,8 @@ export default function PublicHome() {
           <div className="flex items-center gap-3">
             <Globe className="w-6 h-6 text-blue-400" />
             <div>
-              <div className="font-bold text-sm tracking-wide text-white">NCRPRS Web Map Portal</div>
-              <div className="text-[10px] text-slate-400">National Cadastre & Real Property Registration System</div>
+              <div className="font-bold text-sm tracking-wide text-white">Kombolcha City Web Map Portal</div>
+              <div className="text-[10px] text-slate-400">Kombolcha City Cadastre & Real Property Registration System</div>
             </div>
           </div>
 
@@ -108,9 +108,9 @@ export default function PublicHome() {
         {activePortalTab === 'home' && (
           <div className="space-y-6">
             <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-10 rounded-2xl shadow-xl relative overflow-hidden text-center space-y-4">
-              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Welcome to Ethiopian Urban Cadastre & Land Registry</h1>
+              <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">Kombolcha City Cadastre & Land Registry</h1>
               <p className="max-w-2xl mx-auto text-slate-300 text-xs md:text-sm leading-relaxed">
-                Unified public access to urban cadastre map layers, real property registration status tracking, and public land administration directives in compliance with Proclamation 818/2014.
+                Public access to Kombolcha City cadastral map layers, real property registration status tracking, and land administration services.
               </p>
               <div className="flex justify-center gap-4 pt-2">
                 <button onClick={() => setActivePortalTab('status')} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-xs flex items-center gap-2 shadow-lg">
@@ -150,21 +150,15 @@ export default function PublicHome() {
           <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm max-w-2xl mx-auto space-y-6">
             <div className="text-center space-y-2">
               <h2 className="text-xl font-bold text-slate-900 flex justify-center items-center gap-2">
-                <Search className="w-6 h-6 text-blue-600" /> Search Application Status (Section 7.3.5)
+                <Search className="w-6 h-6 text-blue-600" /> Search Application Status
               </h2>
               <p className="text-xs text-slate-500">Enter your City and the unique Application ID printed on your submission acknowledgment receipt.</p>
             </div>
 
             <form onSubmit={handleTrackApplication} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Select City:</label>
-                <select value={searchCity} onChange={e => setSearchCity(e.target.value)} className="w-full p-2.5 border border-slate-300 rounded-lg bg-white">
-                  <option value="Addis Ababa">Addis Ababa</option>
-                  <option value="Dire Dawa">Dire Dawa</option>
-                  <option value="Hawassa">Hawassa</option>
-                  <option value="Bahir Dar">Bahir Dar</option>
-                  <option value="Adama">Adama</option>
-                </select>
+                <span className="block font-semibold text-slate-700 mb-1">Registry City:</span>
+                <div className="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-100">Kombolcha City</div>
               </div>
 
               <div>
@@ -187,7 +181,7 @@ export default function PublicHome() {
                   <div><strong>Applicant Name:</strong> {statusResult.applicantName || statusResult.applicant_name}</div>
                   <div><strong>Application Type:</strong> {statusResult.applicationType || statusResult.application_type}</div>
                   <div><strong>Parcel Code:</strong> {statusResult.parcelCode || 'SN001010106060'}</div>
-                  <div><strong>Registry City:</strong> {statusResult.city || searchCity}</div>
+                  <div><strong>Registry City:</strong> {statusResult.city || 'Kombolcha'}</div>
                 </div>
               </div>
             )}
@@ -198,7 +192,7 @@ export default function PublicHome() {
         {activePortalTab === 'services' && (
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-              <FileText className="w-6 h-6 text-blue-600" /> Registry Services & Required Documents (Section 7.3.3)
+              <FileText className="w-6 h-6 text-blue-600" /> Registry Services & Required Documents
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -210,11 +204,11 @@ export default function PublicHome() {
                   </tr>
                 </thead>
                 <tbody>
-                  {servicesCatalog.map((s, idx) => (
-                    <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="p-3 font-bold text-blue-900">{s.name}</td>
-                      <td className="p-3 text-slate-700">{s.reqDocs}</td>
-                      <td className="p-3 font-semibold text-emerald-600">{s.standardTime}</td>
+                  {(publicServices.length ? publicServices : []).map((s, idx) => (
+                    <tr key={s.id || idx} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="p-3 font-bold text-blue-900">{s.service_name || s.serviceName}</td>
+                      <td className="p-3 text-slate-700">{s.required_documents || s.requiredDocuments || 'N/A'}</td>
+                      <td className="p-3 font-semibold text-emerald-600">{s.processing_time_hours || s.processingTimeHours ? `${s.processing_time_hours || s.processingTimeHours} hrs` : 'N/A'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -227,18 +221,18 @@ export default function PublicHome() {
         {activePortalTab === 'documents' && (
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-              <Download className="w-6 h-6 text-emerald-600" /> Download Center: Proclamations & Application Forms (Section 7.3.4)
+              <Download className="w-6 h-6 text-emerald-600" /> Download Center: Proclamations & Application Forms
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              {documentsList.map((doc, idx) => (
-                <div key={idx} className="p-4 border border-slate-200 rounded-lg flex items-center justify-between hover:border-blue-300 transition bg-slate-50">
+              {(publicDocuments.length ? publicDocuments : []).map((doc, idx) => (
+                <div key={doc.id || idx} className="p-4 border border-slate-200 rounded-lg flex items-center justify-between hover:border-blue-300 transition bg-slate-50">
                   <div>
                     <div className="font-bold text-slate-900 text-sm">{doc.title}</div>
-                    <div className="text-slate-500 mt-1">{doc.category} | {doc.format} ({doc.size})</div>
+                    <div className="text-slate-500 mt-1">{doc.document_category || doc.documentCategory || 'General'} | {(doc.mime_type || doc.mimeType || 'PDF').toUpperCase()}</div>
                   </div>
-                  <button onClick={() => toast.success(`Downloading ${doc.title}...`)} className="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white rounded font-medium flex items-center gap-1.5">
+                  <a href={doc.file_path || doc.filePath || '#'} target="_blank" rel="noreferrer" className="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white rounded font-medium flex items-center gap-1.5">
                     <Download className="w-3.5 h-3.5" /> Download
-                  </button>
+                  </a>
                 </div>
               ))}
             </div>
@@ -249,7 +243,7 @@ export default function PublicHome() {
         {activePortalTab === 'announcements' && (
           <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-              <Newspaper className="w-6 h-6 text-amber-500" /> Announcements & News (Section 7.3.2)
+              <Newspaper className="w-6 h-6 text-amber-500" /> Announcements & News
             </h2>
             <div className="space-y-4 text-xs">
               {announcements.map(a => (
@@ -266,7 +260,7 @@ export default function PublicHome() {
 
       {/* Portal Footer */}
       <footer className="bg-slate-900 text-slate-400 text-xs p-6 border-t border-slate-800 text-center">
-        <div>Copyright &copy; 2026 INSA / FULLPRIA. Cadastre and Real Property Registration System v2.2.</div>
+        <div>Copyright &copy; 2026. Cadastre and Real Property Registration System </div>
       </footer>
     </div>
   );

@@ -144,7 +144,7 @@ async function main() {
     },
     {
       title: 'Public Notice on First Registration Deadlines',
-      content: 'All landholders in Addis Ababa sub-cities are requested to verify their parcel cadastral identifiers before the end of the fiscal quarter.',
+      content: 'All landholders in Kombolcha City are requested to verify their parcel cadastral identifiers before the end of the fiscal quarter.',
       category: 'PUBLIC_NOTICE',
       isPublished: true
     }

@@ -10,6 +10,23 @@ function buildReturnCertificateNumber(applicationNumber, applicationId) {
   return `LDTREC${tail}`;
 }
 
+function getTitleCertificateNumber(application) {
+  const savedNumber = application.certificate_number || application.certificateNumber;
+  if (savedNumber) return savedNumber;
+
+  const transactions = application.transactions || [];
+  const reversedTransactions = [...transactions].reverse();
+  const transactionCertificate = reversedTransactions.find(item => item.certificate_number || item.certificateNumber);
+  if (transactionCertificate) {
+    return transactionCertificate.certificate_number || transactionCertificate.certificateNumber;
+  }
+
+  const transaction = reversedTransactions.find(item => item.transaction_number || item.transactionNumber);
+  const transactionNumber = transaction?.transaction_number || transaction?.transactionNumber;
+
+  return transactionNumber ? `ET-${transactionNumber}` : 'N/A';
+}
+
 export default function ApplicationReceipt() {
   const { id, type } = useParams();
   const navigate = useNavigate();
@@ -43,6 +60,7 @@ export default function ApplicationReceipt() {
   const parcelCode = app?.parcel?.parcel_code || app?.parcel?.parcelCode || app?.parcel_code || '-';
   const appType = (app?.application_type || app?.applicationType || '').replace(/_/g, ' ');
   const txns = app?.transactions || [];
+  const titleCertificateNumber = app ? getTitleCertificateNumber(app) : 'N/A';
   const returnCertificateNumber = useMemo(() => {
     if (!app || receiptType !== 'return') return '';
     return buildReturnCertificateNumber(applicationNumber, app.id);
@@ -155,7 +173,7 @@ export default function ApplicationReceipt() {
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-4">
             <div><strong>Application No:</strong> {applicationNumber}</div>
-            <div><strong>Certificate No:</strong> {app.certificate_number || 'N/A'}</div>
+            <div><strong>Certificate No:</strong> {titleCertificateNumber}</div>
             <div><strong>Status:</strong> {receiptType === 'rejection' ? 'WITHDRAWN' : 'SUBMITTED'}</div>
             <div><strong>Lodgment Date:</strong> {new Date(submittedAt).toLocaleString()}</div>
           </div>

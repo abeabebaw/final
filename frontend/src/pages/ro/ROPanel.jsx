@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { MapContainer, TileLayer, Polygon, Polyline, CircleMarker, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import API from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import toast from 'react-hot-toast';
+
+const REGISTRY_REGION = 'Amhara';
+const REGISTRY_CITY = 'Kombolcha';
 import {
   Play, FolderOpen, CheckCircle, UserPlus, FileText, Scale, Shield,
   Search, Filter, RefreshCw, ChevronRight, Plus, Pencil, Trash2, X,
@@ -36,6 +41,32 @@ const STATUS_OPTIONS = [
   'READY_FOR_APPROVAL', 'APPROVED', 'REJECTED', 'CANCELLED'
 ];
 
+function parseWktCoordinates(wkt) {
+  if (!wkt || typeof wkt !== 'string') return [];
+  const coordinateText = wkt.match(/\(\(([\s\S]*?)\)\)/)?.[1]
+    || wkt.match(/\(([^()]*)\)/)?.[1];
+  if (!coordinateText) return [];
+
+  return coordinateText.split(',').map((coordinate) => {
+    const [longitude, latitude] = coordinate.trim().split(/\s+/).map(Number);
+    return Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? [latitude, longitude]
+      : null;
+  }).filter(Boolean);
+}
+
+function FitParcelBounds({ positions }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (positions.length >= 3) {
+      map.fitBounds(positions, { padding: [24, 24], maxZoom: 19 });
+    }
+  }, [map, positions]);
+
+  return null;
+}
+
 export default function ROPanel() {
   // ─── Transaction List State ─────────────────────────────────────────────
   const [txns, setTxns] = useState([]);
@@ -51,6 +82,7 @@ export default function ROPanel() {
   // Party
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [editingParty, setEditingParty] = useState(null);
+  const [registeringDetectedHolder, setRegisteringDetectedHolder] = useState(false);
 
   // Right (RRR)
   const [showRightModal, setShowRightModal] = useState(false);
@@ -79,8 +111,19 @@ export default function ROPanel() {
   const [previewDoc, setPreviewDoc] = useState(null);
   const [docFilter, setDocFilter] = useState('ALL');
 
-  // Check if transaction is already finished
-  const isFinished = selected && ['READY_FOR_APPROVAL', 'APPROVED', 'FINISHED', 'COMPLETED', 'DELIVERED'].includes(selected.status);
+  // READY_FOR_APPROVAL means GO finished digitizing; RO registration remains editable until approval.
+  const isFinished = selected && ['APPROVED', 'FINISHED', 'COMPLETED', 'DELIVERED', 'CANCELLED', 'CANCELED'].includes(selected.status);
+  const canFinish = selected?.status === 'IN_PROCESS';
+  const parcelCoordinates = selected ? parseWktCoordinates(selected.geometry_wkt) : [];
+  const mapAvailable = Boolean(
+    selected
+    && ['READY_FOR_APPROVAL', 'APPROVED', 'FINISHED', 'COMPLETED', 'DELIVERED'].includes(selected.status)
+    && parcelCoordinates.length >= 3
+  );
+  const isSplitParentSelected = Boolean(
+    selected?.split_parcels?.length && !selected._activeSplitParcelId
+  );
+  const canEditParcel = !isFinished && !isSplitParentSelected;
 
   // ─── Fetch Transactions ─────────────────────────────────────────────────
   const fetchTxns = useCallback(async () => {
@@ -103,6 +146,24 @@ export default function ROPanel() {
   }, [statusFilter, searchQuery]);
 
   useEffect(() => { fetchTxns(); }, [fetchTxns]);
+
+  const withParentParcel = (data) => ({
+    ...data,
+    split_parcels: data.split_parcels || [],
+    _parentParcel: {
+      parcel_id: data.parcel_id,
+      parcel_code: data.parcel_code,
+      area_sqm: data.area_sqm,
+      land_use: data.land_use,
+      region: data.region,
+      city: data.city,
+      sub_city: data.sub_city,
+      woreda: data.woreda,
+      geometry_wkt: data.geometry_wkt,
+      is_registered: data.is_registered
+    },
+    _activeSplitParcelId: null
+  });
 
   // ─── Initiate ───────────────────────────────────────────────────────────
   const handleInitiate = async (id) => {
@@ -139,13 +200,13 @@ export default function ROPanel() {
         };
       }
 
-      setSelected(data);
+      setSelected(withParentParcel(data));
       setActiveTab('holder');
       toast.success('Transaction loaded — registration page ready');
     } catch (e) {
       try {
         const { data } = await API.get(`/transactions/${id}`);
-        setSelected(data);
+        setSelected(withParentParcel(data));
         setActiveTab('holder');
       } catch (e2) {
         toast.error(e.response?.data?.message || 'Failed to load transaction');
@@ -153,20 +214,79 @@ export default function ROPanel() {
     }
   };
 
+  const handleSelectSplitParcel = async (parcel) => {
+    if (!parcel) {
+      try {
+        const { data } = await API.get(`/transactions/${selected.id}`);
+        setSelected(withParentParcel(data));
+        setActiveTab('holder');
+      } catch (err) {
+        console.error('Load original parcel error:', err);
+        toast.error(err.response?.data?.message || 'Could not load the original parcel');
+      }
+      return;
+    }
+
+    try {
+      const { data: parcelDetails } = await API.get(`/parcels/${parcel.parcel_id}`);
+      setSelected(current => {
+        if (!current) return current;
+        return {
+          ...current,
+          parcel_id: parcelDetails.id,
+          parcel_code: parcelDetails.parcel_code,
+          area_sqm: parcelDetails.area_sqm,
+          land_use: parcelDetails.land_use,
+          region: parcelDetails.region,
+          city: parcelDetails.city,
+          sub_city: parcelDetails.sub_city,
+          woreda: parcelDetails.woreda,
+          geometry_wkt: parcelDetails.geometry_wkt,
+          is_registered: parcelDetails.is_registered,
+          parties: parcelDetails.parties || [],
+          _autoHolder: parcelDetails.parties?.length ? null : current._autoHolder,
+          rights: parcelDetails.rights || [],
+          mortgages: parcelDetails.mortgages || [],
+          injunctions: parcelDetails.court_injunctions || [],
+          restrictions: parcelDetails.restrictions || [],
+          _activeSplitParcelId: parcelDetails.id
+        };
+      });
+      setActiveTab('holder');
+      setEditingParty(null);
+      setShowPartyModal(true);
+    } catch (err) {
+      console.error('Load split parcel error:', err);
+      toast.error(err.response?.data?.message || 'Could not load split parcel');
+    }
+  };
+
   // ─── Finish (submit for approval) ──────────────────────────────────────
   const handleFinish = async () => {
     if (!selected) return;
-    if (!selected.rights || selected.rights.length === 0) {
-      toast.error('⚠️ Please register at least one Right (RRR) before finishing');
-      return;
-    }
     if (!window.confirm('Are you sure you want to finish this task and submit for approval?')) return;
     try {
+      if (selected.split_parcels?.length) {
+        const parcelDetails = await Promise.all(
+          selected.split_parcels.map(parcel => API.get(`/parcels/${parcel.parcel_id}`).then(response => response.data))
+        );
+        const parcelWithoutRights = parcelDetails.find(parcel =>
+          !parcel.rights?.some(right => right.status === 'ACTIVE')
+        );
+        if (parcelWithoutRights) {
+          toast.error(`Register at least one active Right for parcel ${parcelWithoutRights.parcel_code} before finishing`);
+          return;
+        }
+      } else if (!selected.rights || selected.rights.length === 0) {
+        toast.error('⚠️ Please register at least one Right (RRR) before finishing');
+        return;
+      }
       await API.post(`/transactions/${selected.id}/finish`);
       toast.success('✅ Transaction submitted for approval (READY_FOR_APPROVAL)');
       setSelected(null);
       fetchTxns();
     } catch (e) {
+      console.error('Finish transaction error:', e);
       toast.error(e.response?.data?.message || 'Failed to finish transaction');
     }
   };
@@ -176,6 +296,7 @@ export default function ROPanel() {
     if (!selected) return;
     try {
       const { data } = await API.get(`/transactions/${selected.id}`);
+      const activeSplitParcelId = selected._activeSplitParcelId;
       if (data.applicant_name && (!data.parties || data.parties.length === 0)) {
         const nameParts = data.applicant_name.split(' ');
         data._autoHolder = {
@@ -188,11 +309,78 @@ export default function ROPanel() {
           national_id: data.applicant_id_number || ''
         };
       }
-      setSelected(data);
-    } catch (e) { console.error(e); }
+      const transactionData = withParentParcel(data);
+      if (activeSplitParcelId) {
+        const activeParcel = data.split_parcels?.find(parcel => parcel.parcel_id === activeSplitParcelId);
+        if (!activeParcel) {
+          throw new Error('The selected split parcel is no longer linked to this transaction');
+        }
+        const { data: parcelDetails } = await API.get(`/parcels/${activeSplitParcelId}`);
+        setSelected({
+          ...transactionData,
+          parcel_id: parcelDetails.id,
+          parcel_code: parcelDetails.parcel_code,
+          area_sqm: parcelDetails.area_sqm,
+          land_use: parcelDetails.land_use,
+          region: parcelDetails.region,
+          city: parcelDetails.city,
+          sub_city: parcelDetails.sub_city,
+          woreda: parcelDetails.woreda,
+          geometry_wkt: parcelDetails.geometry_wkt,
+          is_registered: parcelDetails.is_registered,
+          parties: parcelDetails.parties || [],
+          _autoHolder: parcelDetails.parties?.length ? null : transactionData._autoHolder,
+          rights: parcelDetails.rights || [],
+          mortgages: parcelDetails.mortgages || [],
+          injunctions: parcelDetails.court_injunctions || [],
+          restrictions: parcelDetails.restrictions || [],
+          _activeSplitParcelId: activeSplitParcelId
+        });
+      } else {
+        setSelected(transactionData);
+      }
+    } catch (e) {
+      console.error('Refresh transaction error:', e);
+      toast.error(e.response?.data?.message || e.message || 'Could not refresh transaction');
+    }
   };
 
   // ─── Delete Party ───────────────────────────────────────────────────────
+  const handleRegisterDetectedHolder = async () => {
+    const holder = selected?._autoHolder;
+    if (!selected?.parcel_id || !holder?.first_name || !holder?.father_name) {
+      toast.error('Applicant details are incomplete. Use Add Holder to enter the missing information.');
+      return;
+    }
+
+    setRegisteringDetectedHolder(true);
+    try {
+      const { data: party } = await API.post('/parties', {
+        parcel_id: selected.parcel_id,
+        party_type: 'NATURAL',
+        first_name: holder.first_name,
+        father_name: holder.father_name,
+        grandfather_name: holder.grandfather_name || null,
+        national_id: holder.national_id || null,
+        phone: holder.phone || null,
+        email: holder.email || null,
+        address: holder.address || null,
+        is_under_tutorship: false
+      });
+      setSelected(current => current ? {
+        ...current,
+        parties: [...(current.parties || []), party],
+        _autoHolder: null
+      } : current);
+      toast.success('Applicant registered as a parcel holder');
+    } catch (err) {
+      console.error('Register detected holder error:', err);
+      toast.error(err.response?.data?.message || 'Failed to register the detected holder');
+    } finally {
+      setRegisteringDetectedHolder(false);
+    }
+  };
+
   const handleDeleteParty = async (partyId) => {
     if (isFinished) {
       toast.error('Cannot delete: this task is already finished');
@@ -424,7 +612,7 @@ export default function ROPanel() {
                 className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-semibold flex items-center gap-1">
                 <RefreshCw className="w-3 h-3" /> Refresh
               </button>
-              {!isFinished && (
+              {canFinish && (
                 <button onClick={handleFinish}
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold flex items-center gap-1 shadow-sm">
                   <CheckCircle className="w-3.5 h-3.5" /> Finish
@@ -432,6 +620,61 @@ export default function ROPanel() {
               )}
             </div>
           </div>
+
+          {selected.split_parcels?.length > 0 && (
+            <div className="p-4 border-b border-slate-200">
+              <h3 className="text-sm font-bold text-slate-800 mb-2">Parcel List after Split</h3>
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
+                      <th className="p-2.5 text-left w-12">No</th>
+                      <th className="p-2.5 text-left">Parcel ID</th>
+                      <th className="p-2.5 text-left">Status</th>
+                      <th className="p-2.5 text-left">Area</th>
+                      <th className="p-2.5 text-left">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-slate-100">
+                      <td className="p-2.5">1</td>
+                      <td className="p-2.5 font-mono">
+                        {selected._parentParcel?.parcel_code || selected.parcel_code} (Old)
+                      </td>
+                      <td className="p-2.5">
+                        <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">Cancelled</span>
+                      </td>
+                      <td className="p-2.5">{Number(selected._parentParcel?.area_sqm || 0).toLocaleString()} m²</td>
+                      <td className="p-2.5">
+                        <button
+                          onClick={() => handleSelectSplitParcel(null)}
+                          className="text-blue-700 hover:text-blue-900 font-semibold">
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                    {selected.split_parcels.map((parcel, index) => (
+                      <tr key={parcel.parcel_id} className="border-b border-slate-100 last:border-0">
+                        <td className="p-2.5">{index + 2}</td>
+                        <td className="p-2.5 font-mono">{parcel.parcel_code}</td>
+                        <td className="p-2.5">
+                          <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold">Active</span>
+                        </td>
+                        <td className="p-2.5">{Number(parcel.area_sqm || 0).toLocaleString()} m²</td>
+                        <td className="p-2.5">
+                          <button
+                            onClick={() => handleSelectSplitParcel(parcel)}
+                            className={`font-semibold ${selected._activeSplitParcelId === parcel.parcel_id ? 'text-emerald-700' : 'text-blue-700 hover:text-blue-900'}`}>
+                            Register Holder
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col md:flex-row">
             {/* ─── Left Sidebar: Parcel Information (Matching Screenshot) ─── */}
@@ -480,8 +723,12 @@ export default function ROPanel() {
                 ].map(tab => (
                   <button
                     key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
-                    className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 whitespace-nowrap transition-colors
+                    disabled={tab.key === 'map' && !mapAvailable}
+                    title={tab.key === 'map' && !mapAvailable ? 'Available after GO finishes digitizing this parcel' : undefined}
+                    onClick={() => {
+                      if (tab.key !== 'map' || mapAvailable) setActiveTab(tab.key);
+                    }}
+                    className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed
                       ${activeTab === tab.key
                         ? 'border-blue-600 text-blue-700 bg-white font-bold'
                         : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
@@ -492,7 +739,12 @@ export default function ROPanel() {
               </div>
 
               {/* Tab Body */}
-              <div className="p-5 min-h-[420px]">
+              <div className={`p-5 min-h-[420px] ${isSplitParentSelected ? 'pointer-events-none opacity-60' : ''}`}>
+                {isSplitParentSelected && (
+                  <div className="mb-4 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                    This original parcel was cancelled by the split. Select an active child parcel above to register its holder.
+                  </div>
+                )}
                 {/* ━━━━━ TAB 1: HOLDER (Natural, Legal, Group) ━━━━━━━━━━━━━━ */}
                 {activeTab === 'holder' && (
                   <div>
@@ -525,21 +777,10 @@ export default function ROPanel() {
                         </div>
                         {!isFinished && (
                           <button
-                            onClick={() => {
-                              setEditingParty({
-                                party_type: 'NATURAL',
-                                first_name: selected._autoHolder.first_name,
-                                father_name: selected._autoHolder.father_name,
-                                grandfather_name: selected._autoHolder.grandfather_name,
-                                phone: selected._autoHolder.phone,
-                                email: selected._autoHolder.email,
-                                address: selected._autoHolder.address,
-                                national_id: selected._autoHolder.national_id
-                              });
-                              setShowPartyModal(true);
-                            }}
-                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded font-bold text-xs shrink-0 flex items-center gap-1 shadow-sm">
-                            <UserCheck className="w-3 h-3" /> Register Detected Holder
+                            onClick={handleRegisterDetectedHolder}
+                            disabled={registeringDetectedHolder}
+                            className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 disabled:cursor-wait text-white rounded font-bold text-xs shrink-0 flex items-center gap-1 shadow-sm">
+                            <UserCheck className="w-3 h-3" /> {registeringDetectedHolder ? 'Registering...' : 'Register Detected Holder'}
                           </button>
                         )}
                       </div>
@@ -1157,12 +1398,108 @@ export default function ROPanel() {
 
                 {/* ━━━━━ TAB 6: MAP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
                 {activeTab === 'map' && (
-                  <div className="text-center py-12 text-slate-400">
-                    <MapPin className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                    <p className="font-bold text-slate-600">Map & Spatial Boundary</p>
-                    <p className="text-xs mt-1">Cadastral boundary details for Parcel Code:</p>
-                    <p className="text-xs font-mono font-bold text-blue-600 mt-1">{selected.parcel_code || selected.parcel_id}</p>
-                  </div>
+                  mapAvailable ? (
+                    <div className="space-y-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-800">Parcel Map & Spatial Information</h4>
+                        <p className="text-[11px] text-slate-500">
+                          Digitized boundary linked to transaction {selected.transaction_number}.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(260px,1fr)] gap-4">
+                        <div className="h-[420px] border border-slate-300 rounded-lg overflow-hidden">
+                          <MapContainer
+                            key={selected.id}
+                            center={parcelCoordinates[0]}
+                            zoom={18}
+                            scrollWheelZoom
+                            style={{ width: '100%', height: '100%' }}
+                          >
+                            <TileLayer
+                              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                              attribution="&copy; OpenStreetMap contributors"
+                            />
+                            <FitParcelBounds positions={parcelCoordinates} />
+                            <Polygon
+                              positions={parcelCoordinates}
+                              pathOptions={{ color: '#b91c1c', weight: 3, fillColor: '#f87171', fillOpacity: 0.3 }}
+                            />
+                            {(selected.boundary_lines || []).map(line => {
+                              const positions = parseWktCoordinates(line.geometry_wkt);
+                              return positions.length >= 2 ? (
+                                <Polyline
+                                  key={line.id}
+                                  positions={positions}
+                                  pathOptions={{ color: '#1d4ed8', weight: 2 }}
+                                />
+                              ) : null;
+                            })}
+                            {(selected.border_points || []).map(point => {
+                              const position = parseWktCoordinates(point.geometry_wkt)[0];
+                              return position ? (
+                                <CircleMarker
+                                  key={point.id}
+                                  center={position}
+                                  radius={5}
+                                  pathOptions={{ color: '#1e3a8a', fillColor: '#3b82f6', fillOpacity: 1 }}
+                                />
+                              ) : null;
+                            })}
+                          </MapContainer>
+                        </div>
+                        <div className="space-y-3 text-xs">
+                          <div className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                            <h5 className="font-bold text-slate-800 mb-2">Parcel Details</h5>
+                            <dl className="space-y-1.5">
+                              <div className="flex justify-between gap-2"><dt className="text-slate-500">Parcel Code</dt><dd className="font-mono font-semibold text-right">{selected.parcel_code || '—'}</dd></div>
+                              <div className="flex justify-between gap-2"><dt className="text-slate-500">Area</dt><dd className="font-semibold text-right">{selected.area_sqm ? `${selected.area_sqm} m²` : '—'}</dd></div>
+                              <div className="flex justify-between gap-2"><dt className="text-slate-500">Land Use</dt><dd className="text-right">{selected.land_use || '—'}</dd></div>
+                              <div className="flex justify-between gap-2"><dt className="text-slate-500">CRS</dt><dd className="font-mono text-right">EPSG:4326</dd></div>
+                            </dl>
+                          </div>
+                          <div className="border border-slate-200 rounded-lg p-3">
+                            <h5 className="font-bold text-slate-800 mb-2">Boundary Points ({selected.border_points?.length || 0})</h5>
+                            {selected.border_points?.length ? (
+                              <div className="max-h-36 overflow-auto space-y-1">
+                                {selected.border_points.map(point => {
+                                  const [latitude, longitude] = parseWktCoordinates(point.geometry_wkt)[0] || [];
+                                  return (
+                                    <div key={point.id} className="flex justify-between gap-2 border-b border-slate-100 pb-1">
+                                      <span className="font-mono">{point.point_number || 'Point'}</span>
+                                      <span className="text-slate-500 text-right">
+                                        {Number.isFinite(latitude) && Number.isFinite(longitude)
+                                          ? `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+                                          : 'Coordinates unavailable'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : <p className="text-slate-500">No separate border points recorded.</p>}
+                          </div>
+                          <div className="border border-slate-200 rounded-lg p-3">
+                            <h5 className="font-bold text-slate-800 mb-2">Boundary Lines ({selected.boundary_lines?.length || 0})</h5>
+                            {selected.boundary_lines?.length ? (
+                              <div className="space-y-1">
+                                {selected.boundary_lines.map(line => (
+                                  <div key={line.id} className="flex justify-between gap-2">
+                                    <span className="font-mono">{line.line_number || 'Boundary'}</span>
+                                    <span className="text-slate-500">{line.length_m ? `${line.length_m} m` : 'Length not recorded'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : <p className="text-slate-500">No separate boundary lines recorded.</p>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-slate-400">
+                      <MapPin className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                      <p className="font-bold text-slate-600">Parcel map is not available yet</p>
+                      <p className="text-xs mt-1">The GO must draw the parcel, save its geometry, and finish the transaction first.</p>
+                    </div>
+                  )
                 )}
               </div>
             </div>
@@ -1479,7 +1816,7 @@ function ComprehensivePartyModal({ txn, initialParty, onClose, onSaved }) {
 
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="font-semibold text-slate-700 block mb-1">Birth Date:<span className="text-rose-500">*</span></label><input type="date" className="w-full p-2 border border-slate-300 rounded" value={naturalForm.birth_date} onChange={e => setNaturalForm({...naturalForm, birth_date: e.target.value})} /></div>
-                <div><label className="font-semibold text-slate-700 block mb-1">Birth Place:<span className="text-rose-500">*</span></label><input type="text" placeholder="e.g. Addis Ababa" className="w-full p-2 border border-slate-300 rounded" value={naturalForm.birth_place} onChange={e => setNaturalForm({...naturalForm, birth_place: e.target.value})} /></div>
+                <div><label className="font-semibold text-slate-700 block mb-1">Birth Place:<span className="text-rose-500">*</span></label><input type="text" placeholder="e.g. Kombolcha" className="w-full p-2 border border-slate-300 rounded" value={naturalForm.birth_place} onChange={e => setNaturalForm({...naturalForm, birth_place: e.target.value})} /></div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1932,9 +2269,7 @@ function ComprehensiveMortgageModal({ txn, initialMortgage, onClose, onSaved }) 
     legal_party_type: initialMortgage?.mortgagee_type || 'Bank',
     tin_number: existingMeta.tin_number || '9877777777',
 
-    region: existingMeta.region || 'Dire Dawa',
-    zone: existingMeta.zone || 'DireDawa',
-    city: existingMeta.city || 'DireDawa',
+    zone: existingMeta.zone || 'South Wollo',
     sub_city: existingMeta.sub_city || '',
     woreda: existingMeta.woreda || '',
     kebele: existingMeta.kebele || '',
@@ -1962,9 +2297,9 @@ function ComprehensiveMortgageModal({ txn, initialMortgage, onClose, onSaved }) 
         rank: form.rank,
         end_loan_period: form.end_loan_period,
         tin_number: form.tin_number,
-        region: form.region,
+        region: REGISTRY_REGION,
         zone: form.zone,
-        city: form.city,
+        city: REGISTRY_CITY,
         sub_city: form.sub_city,
         woreda: form.woreda,
         kebele: form.kebele,
@@ -2083,10 +2418,8 @@ function ComprehensiveMortgageModal({ txn, initialMortgage, onClose, onSaved }) 
               <h4 className="text-[11px] font-bold text-slate-800">Address Information</h4>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Region:*</label>
-                  <select className="w-full p-2 border border-slate-300 rounded" value={form.region} onChange={e => setForm({...form, region: e.target.value})}>
-                    <option value="Dire Dawa">Dire Dawa</option><option value="Addis Ababa">Addis Ababa</option><option value="Oromia">Oromia</option><option value="Amhara">Amhara</option>
-                  </select>
+                  <span className="font-semibold text-slate-700 block mb-1">Region:</span>
+                  <p className="w-full p-2 border border-slate-300 rounded bg-slate-100">{REGISTRY_REGION}</p>
                 </div>
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Zone:*</label>
@@ -2095,8 +2428,8 @@ function ComprehensiveMortgageModal({ txn, initialMortgage, onClose, onSaved }) 
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">City:*</label>
-                  <input type="text" className="w-full p-2 border border-slate-300 rounded" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
+                  <span className="font-semibold text-slate-700 block mb-1">City:</span>
+                  <p className="w-full p-2 border border-slate-300 rounded bg-slate-100">{REGISTRY_CITY}</p>
                 </div>
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Sub City:</label>
@@ -2213,9 +2546,9 @@ function MortgageReleaseModal({ mortgage, onClose, onSaved }) {
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
               <h4 className="text-[11px] font-bold text-slate-800">Address Information</h4>
               <div className="grid grid-cols-2 gap-2 text-slate-700">
-                <div><span className="text-slate-500 block">Region:</span> {meta.region || 'Dire Dawa'}</div>
-                <div><span className="text-slate-500 block">Zone:</span> {meta.zone || 'DireDawa'}</div>
-                <div><span className="text-slate-500 block">City:</span> {meta.city || 'DireDawa'}</div>
+                <div><span className="text-slate-500 block">Region:</span> {REGISTRY_REGION}</div>
+                <div><span className="text-slate-500 block">Zone:</span> {meta.zone || 'South Wollo'}</div>
+                <div><span className="text-slate-500 block">City:</span> {REGISTRY_CITY}</div>
                 <div><span className="text-slate-500 block">Sub-City:</span> {meta.sub_city || '—'}</div>
                 <div><span className="text-slate-500 block">Woreda:</span> {meta.woreda || '—'}</div>
                 <div><span className="text-slate-500 block">Kebele:</span> {meta.kebele || '—'}</div>
@@ -2260,9 +2593,7 @@ function CourtInjunctionModalMatching({ txn, initialInjunction, onClose, onSaved
     tin_number: existingMeta.tin_number || '',
 
     // Right Box: Address (Court Address)
-    region: existingMeta.region || 'Dire Dawa',
-    zone: existingMeta.zone || 'DireDawa',
-    city: existingMeta.city || 'DireDawa',
+    zone: existingMeta.zone || 'South Wollo',
     sub_city: existingMeta.sub_city || '',
     woreda: existingMeta.woreda || '',
     kebele: existingMeta.kebele || '',
@@ -2287,9 +2618,9 @@ function CourtInjunctionModalMatching({ txn, initialInjunction, onClose, onSaved
       const meta = {
         right_holder: form.right_holder,
         tin_number: form.tin_number,
-        region: form.region,
+        region: REGISTRY_REGION,
         zone: form.zone,
-        city: form.city,
+        city: REGISTRY_CITY,
         sub_city: form.sub_city,
         woreda: form.woreda,
         kebele: form.kebele,
@@ -2366,10 +2697,8 @@ function CourtInjunctionModalMatching({ txn, initialInjunction, onClose, onSaved
               <h4 className="text-[11px] font-bold text-slate-800">Address (Court Address)</h4>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Region:*</label>
-                  <select className="w-full p-2 border border-slate-300 rounded" value={form.region} onChange={e => setForm({...form, region: e.target.value})}>
-                    <option value="Dire Dawa">Dire Dawa</option><option value="Addis Ababa">Addis Ababa</option><option value="Oromia">Oromia</option><option value="Amhara">Amhara</option>
-                  </select>
+                  <span className="font-semibold text-slate-700 block mb-1">Region:</span>
+                  <p className="w-full p-2 border border-slate-300 rounded bg-slate-100">{REGISTRY_REGION}</p>
                 </div>
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Zone:*</label>
@@ -2378,8 +2707,8 @@ function CourtInjunctionModalMatching({ txn, initialInjunction, onClose, onSaved
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">City:*</label>
-                  <input type="text" className="w-full p-2 border border-slate-300 rounded" value={form.city} onChange={e => setForm({...form, city: e.target.value})} />
+                  <span className="font-semibold text-slate-700 block mb-1">City:</span>
+                  <p className="w-full p-2 border border-slate-300 rounded bg-slate-100">{REGISTRY_CITY}</p>
                 </div>
                 <div>
                   <label className="font-semibold text-slate-700 block mb-1">Sub City:</label>
@@ -2493,9 +2822,9 @@ function CourtInjunctionReleaseModal({ injunction, onClose, onSaved }) {
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
               <h4 className="text-[11px] font-bold text-slate-800">Address Information</h4>
               <div className="grid grid-cols-2 gap-2 text-slate-700">
-                <div><span className="text-slate-500 block">Region:</span> {meta.region || 'Dire Dawa'}</div>
-                <div><span className="text-slate-500 block">Zone:</span> {meta.zone || 'DireDawa'}</div>
-                <div><span className="text-slate-500 block">City:</span> {meta.city || 'DireDawa'}</div>
+                <div><span className="text-slate-500 block">Region:</span> {REGISTRY_REGION}</div>
+                <div><span className="text-slate-500 block">Zone:</span> {meta.zone || 'South Wollo'}</div>
+                <div><span className="text-slate-500 block">City:</span> {REGISTRY_CITY}</div>
                 <div><span className="text-slate-500 block">Sub-City:</span> {meta.sub_city || '—'}</div>
                 <div><span className="text-slate-500 block">Woreda:</span> {meta.woreda || '—'}</div>
                 <div><span className="text-slate-500 block">Kebele:</span> {meta.kebele || '—'}</div>

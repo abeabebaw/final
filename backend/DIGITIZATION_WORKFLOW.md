@@ -46,7 +46,8 @@ The DO Panel shows applications in the following statuses:
 1. Open application from DO Panel
 2. Review applicant information
 3. Check parcel details (area, location, land use)
-4. Verify all required documents are attached
+4. Review the FDO Required Documents list in the application queue or scanning controls
+5. Upload each document using the FDO-selected document type, and verify its status changes to Uploaded
 
 ### **Step 2: Enter Basic Parcel Data**
 Navigate to "Parcel Digitization" section:
@@ -140,17 +141,13 @@ POLYGON((38.7578 9.0320, 38.7580 9.0320, 38.7580 9.0325, 38.7578 9.0325, 38.7578
 ### **Example 1: Residential Parcel**
 ```
 Application: APP-2026-000123
-Parcel Code: PRC-ADBO-202608-00045 (auto-generated)
+Parcel Code: PRC-AMKO-202608-00045 (auto-generated)
 Area: 350.00 sqm
 Land Use: Residential
-Region: Addis Ababa
-City: Bole
+Region: Amhara
+City: Kombolcha
 
-Corner Points:
-- P1: 9.032045, 38.757812
-- P2: 9.032045, 38.757920
-- P3: 9.031945, 38.757920
-- P4: 9.031945, 38.757812
+Corner points and boundary lines must use the verified survey coordinates for the specific Kombolcha parcel.
 
 Boundary Lines:
 - L1 (North): 12.00 m
@@ -162,17 +159,13 @@ Boundary Lines:
 ### **Example 2: Commercial Parcel**
 ```
 Application: APP-2026-000124
-Parcel Code: PRC-ORAD-202608-00012 (auto-generated)
+Parcel Code: PRC-AMKO-202608-00012 (auto-generated)
 Area: 1500.00 sqm
 Land Use: Commercial
-Region: Oromia
-City: Adama
+Region: Amhara
+City: Kombolcha
 
-Corner Points:
-- NW: 8.540123, 39.267890
-- NE: 8.540123, 39.268234
-- SE: 8.539890, 39.268234
-- SW: 8.539890, 39.267890
+Corner points and boundary lines must use the verified survey coordinates for the specific Kombolcha parcel.
 
 Boundary Lines:
 - North: 38.50 m

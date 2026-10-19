@@ -102,6 +102,8 @@ CREATE TABLE parcels (
   geometry_wkt TEXT,
   is_registered BOOLEAN DEFAULT FALSE,
   registration_date TIMESTAMP,
+  parent_parcel_id UUID REFERENCES parcels(id) ON DELETE SET NULL,
+  split_transaction_id UUID,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -125,6 +127,7 @@ CREATE TABLE applications (
   applicant_id_number VARCHAR(50),
   applicant_id_type VARCHAR(50),
   description TEXT,
+  required_document_types TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   submitted_by UUID REFERENCES users(id),
   submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   withdrawn_reason TEXT,
@@ -165,6 +168,10 @@ CREATE TABLE transactions (
 CREATE INDEX idx_transactions_application ON transactions(application_id);
 CREATE INDEX idx_transactions_status ON transactions(status);
 CREATE INDEX idx_transactions_assigned_to ON transactions(assigned_to);
+ALTER TABLE parcels
+  ADD CONSTRAINT parcels_split_transaction_id_fkey
+  FOREIGN KEY (split_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL;
+CREATE INDEX idx_parcels_split_transaction ON parcels(split_transaction_id);
 
 -- ============================================
 -- PARTIES (Holders)

@@ -26,6 +26,7 @@ import SROPanel from './pages/sro/SROPanel';
 import UserManagement from './pages/admin/UserManagement';
 import LookupManagement from './pages/admin/LookupManagement';
 import RequiredDocuments from './pages/admin/RequiredDocument';
+import PublicContentManagement from './pages/admin/PublicContentManagement';
 import BusinessRule from './pages/admin/BusinessRule';
 import Configuration from './pages/admin/Configuration';
 import AuditLogs from './pages/admin/AuditLogs';
@@ -68,7 +69,7 @@ export default function App() {
         <Route path="transactions" element={<ProtectedRoute roles={['FDO','RO','SRO','GO','SGO','ADMIN']}><TransactionList /></ProtectedRoute>} />
         
         {/* RECS GIS Cadastre Route */}
-        <Route path="recs" element={<ProtectedRoute roles={['GO','SGO','RO','SRO','ADMIN']}><RECSPanel /></ProtectedRoute>} />
+        <Route path="recs" element={<ProtectedRoute roles={['GO']}><RECSPanel /></ProtectedRoute>} />
 
         {/* DO Routes */}
         <Route path="do" element={<ProtectedRoute roles={['DO','ADMIN']}><DOPanel /></ProtectedRoute>} />
@@ -83,6 +84,7 @@ export default function App() {
         <Route path="admin/users" element={<ProtectedRoute roles={['ADMIN']}><UserManagement /></ProtectedRoute>} />
         <Route path="admin/lookups" element={<ProtectedRoute roles={['ADMIN']}><LookupManagement /></ProtectedRoute>} />
         <Route path="admin/required-documents" element={<ProtectedRoute roles={['ADMIN']}><RequiredDocuments /></ProtectedRoute>} />
+        <Route path="admin/public-content" element={<ProtectedRoute roles={['ADMIN']}><PublicContentManagement /></ProtectedRoute>} />
         <Route path="admin/business-rules" element={<ProtectedRoute roles={['ADMIN']}><BusinessRule /></ProtectedRoute>} />
         <Route path="admin/configurations" element={<ProtectedRoute roles={['ADMIN']}><Configuration /></ProtectedRoute>} />
         <Route path="admin/audit-logs" element={<ProtectedRoute roles={['ADMIN']}><AuditLogs /></ProtectedRoute>} />

@@ -48,6 +48,9 @@ The RO can register the following types of information:
 - Imposed by
 - Imposed date
 
+### Parcel Split Registration
+When the GIS Officer completes and saves a parcel split, opening its transaction shows the cancelled original parcel and both active child parcels with their areas. Select **Register Holder** beside each child to load that parcel's holder and registration records; register each child independently. The transaction can be finished after each active child has at least one active right.
+
 ### 3. Holder Information
 The system automatically detects if the holder information is registered as an applicant:
 - If holder exists, the system uses existing party information

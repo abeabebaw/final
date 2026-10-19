@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Home, FileText, List, UserCheck, CheckSquare, Users, Settings, Database, MapPin, ShieldCheck } from 'lucide-react';
+import { Home, FileText, List, UserCheck, CheckSquare, Users, Settings, Database, MapPin, ShieldCheck, Globe } from 'lucide-react';
 
 export default function Sidebar() {
   const { user } = useAuth();
@@ -8,15 +8,16 @@ export default function Sidebar() {
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard & Reports', icon: Home, roles: ['ADMIN'] },
-    { path: '/applications', label: 'Applications (FDO)', icon: FileText, roles: ['FDO','ADMIN'] },
-    { path: '/transactions', label: 'Transactions Queue', icon: List, roles: ['FDO','RO','SRO','GO','SGO','ADMIN'] },
-    { path: '/recs', label: 'RECS GIS Cadastre', icon: MapPin, roles: ['GO','SGO','RO','SRO','ADMIN'] },
-    { path: '/do', label: 'DMS & Scanning Studio', icon: FileText, roles: ['DO','ADMIN'] },
-    { path: '/ro', label: 'Registration Workbench', icon: UserCheck, roles: ['RO','ADMIN'] },
-    { path: '/sro', label: 'SRO Approvals & Titles', icon: CheckSquare, roles: ['SRO','ADMIN'] },
+    { path: '/applications', label: 'Applications (FDO)', icon: FileText, roles: ['FDO'] },
+    { path: '/transactions', label: 'Transactions Queue', icon: List, roles: ['FDO','RO','SRO','GO','SGO'] },
+    { path: '/recs', label: 'RECS GIS Cadastre', icon: MapPin, roles: ['GO'] },
+    { path: '/do', label: 'DMS & Scanning Studio', icon: FileText, roles: ['DO'] },
+    { path: '/ro', label: 'Registration Workbench', icon: UserCheck, roles: ['RO'] },
+    { path: '/sro', label: 'SRO Approvals & Titles', icon: CheckSquare, roles: ['SRO'] },
     { path: '/admin/users', label: 'User Management', icon: Users, roles: ['ADMIN'] },
     { path: '/admin/lookups', label: 'Lookup Management', icon: Database, roles: ['ADMIN'] },
     { path: '/admin/required-documents', label: 'Required Documents', icon: Settings, roles: ['ADMIN'] },
+    { path: '/admin/public-content', label: 'Public Content', icon: Globe, roles: ['ADMIN'] },
     { path: '/admin/audit-logs', label: 'Audit Trail & Monitoring', icon: ShieldCheck, roles: ['ADMIN'] },
   ];
 

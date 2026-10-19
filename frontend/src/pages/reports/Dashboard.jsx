@@ -13,9 +13,9 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [leadTime, setLeadTime] = useState([]);
   const [empPerf, setEmpPerf] = useState([]);
+  const [loadError, setLoadError] = useState('');
   const [selectedYear, setSelectedYear] = useState('2026');
   const [selectedMonth, setSelectedMonth] = useState('All');
-  const [selectedRegion, setSelectedRegion] = useState('All');
 
   // Additional mock reporting data matching section 6.3.4 & 6.3.5 of user manual
   const propertyRightsData = [
@@ -33,9 +33,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [selectedYear, selectedMonth, selectedRegion]);
+  }, [selectedYear, selectedMonth]);
 
   const fetchDashboardData = async () => {
+    setLoadError('');
     try {
       const [sRes, lRes, eRes] = await Promise.all([
         API.get('/reports/dashboard'),
@@ -46,35 +47,8 @@ export default function Dashboard() {
       setLeadTime(lRes.data || []);
       setEmpPerf(eRes.data || []);
     } catch (err) {
-      console.log('Using sample reporting metrics...');
-      setStats({
-        totalApplications: 432,
-        registeredParcels: 1240,
-        pendingTransactions: 28,
-        completedApplications: 389,
-        applicationsByStatus: [
-          { status: 'SUBMITTED', count: 17 },
-          { status: 'IN_PROGRESS', count: 26 },
-          { status: 'FINISHED', count: 389 }
-        ],
-        transactionsByType: [
-          { transaction_type: 'REGISTRATION_OF_LEASEHOLD', count: 140 },
-          { transaction_type: 'MORTGAGE_REGISTRATION', count: 85 },
-          { transaction_type: 'PARCEL_SPLIT', count: 42 }
-        ]
-      });
-      setLeadTime([
-        { application_type: 'First Registration', avg_lead_time_hours: 18.5 },
-        { application_type: 'Subsequent Registration', avg_lead_time_hours: 8.2 },
-        { application_type: 'Parcel Resize', avg_lead_time_hours: 24.0 },
-        { application_type: 'Information Provision', avg_lead_time_hours: 2.1 }
-      ]);
-      setEmpPerf([
-        { full_name: 'Solomon (FDO)', transactions_processed: 142 },
-        { full_name: 'Mulugeta (RO)', transactions_processed: 115 },
-        { full_name: 'Kebede (SRO)', transactions_processed: 98 },
-        { full_name: 'Arada DO', transactions_processed: 130 }
-      ]);
+      console.error('Failed to load dashboard analytics:', err);
+      setLoadError(err.response?.data?.message || 'Failed to load dashboard analytics.');
     }
   };
 
@@ -82,7 +56,7 @@ export default function Dashboard() {
     try {
       const rows = [
         ['CRPRS Business Intelligence Report', `Generated: ${new Date().toLocaleString()}`],
-        ['Filter Year', selectedYear, 'Filter Month', selectedMonth, 'Filter Region', selectedRegion],
+        ['Filter Year', selectedYear, 'Filter Month', selectedMonth],
         [],
         ['Metric', 'Value'],
         ['Total Applications', stats.totalApplications || 0],
@@ -113,6 +87,21 @@ export default function Dashboard() {
     }
   };
 
+  if (!stats && loadError) {
+    return (
+      <div className="p-6 text-center text-rose-700" role="alert">
+        <p>{loadError}</p>
+        <button
+          type="button"
+          onClick={fetchDashboardData}
+          className="mt-3 rounded bg-blue-900 px-3 py-1.5 text-white hover:bg-blue-800"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   if (!stats) return <div className="p-6 text-slate-500">Loading Business Intelligence Dashboard...</div>;
 
   return (
@@ -123,7 +112,7 @@ export default function Dashboard() {
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Clock className="w-6 h-6 text-blue-600" /> CRPRS BI & Analytics Dashboard
           </h2>
-          <p className="text-xs text-slate-500">National Cadastre & Real Property BI Reporting Module (Release 2.2)</p>
+          <p className="text-xs text-slate-500">Kombolcha City Cadastre & Real Property BI Reporting Module</p>
         </div>
 
         {/* Global Filter Bar */}
@@ -137,12 +126,6 @@ export default function Dashboard() {
             <option value="All">All Months</option>
             <option value="August">August</option>
             <option value="September">September</option>
-          </select>
-          <select value={selectedRegion} onChange={e => setSelectedRegion(e.target.value)} className="p-1.5 border border-slate-300 rounded bg-slate-50">
-            <option value="All">All Regions / Cities</option>
-            <option value="AA">Addis Ababa</option>
-            <option value="DD">Dire Dawa</option>
-            <option value="HA">Hawassa</option>
           </select>
           <button onClick={handleExportCSV} className="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white rounded font-medium flex items-center gap-1">
             <Download className="w-3.5 h-3.5" /> Export Data

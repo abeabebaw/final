@@ -17,20 +17,17 @@ export default function Navbar() {
       ],
       RO: [
         { path: '/transactions', label: 'Transactions' },
-        { path: '/ro', label: 'Registration Workbench' },
-        { path: '/recs', label: 'RECS Cadastre' }
+        { path: '/ro', label: 'Registration Workbench' }
       ],
       SRO: [
         { path: '/transactions', label: 'Transactions' },
-        { path: '/sro', label: 'Approvals & Titles' },
-        { path: '/recs', label: 'RECS Cadastre' }
+        { path: '/sro', label: 'Approvals & Titles' }
       ],
       GO: [
         { path: '/recs', label: 'RECS Cadastre' },
         { path: '/transactions', label: 'Transactions' }
       ],
       SGO: [
-        { path: '/recs', label: 'RECS Cadastre' },
         { path: '/transactions', label: 'Transactions' }
       ]
     };
@@ -55,11 +52,6 @@ export default function Navbar() {
               {link.label}
             </NavLink>
           ))}
-          {user?.role === 'FDO' && (
-            <NavLink className="operational-navigation__create" to="/applications/new">
-              + New Application
-            </NavLink>
-          )}
         </div>
         <div className="operational-user">
           <span className="operational-user__identity">

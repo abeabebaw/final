@@ -52,8 +52,8 @@ export default function ApplicationForm() {
     parcel_code: '',
     area_sqm: '',
     land_use: 'Residential',
-    region: 'Addis Ababa',
-    city: 'Bole',
+    region: 'Amhara',
+    city: 'Kombolcha',
     sub_city: '',
     woreda: '',
     // Applicant detailed fields
@@ -93,7 +93,7 @@ export default function ApplicationForm() {
   const [docErrors, setDocErrors] = useState({});
 
   useEffect(() => {
-    API.get('/parcels')
+    API.get('/parcels', { params: { city: 'Kombolcha' } })
       .then(({ data }) => {
         const list = Array.isArray(data) ? data : data.data || [];
         setParcels(list);
@@ -115,8 +115,8 @@ export default function ApplicationForm() {
             parcel_code: app.parcel?.parcelCode || '',
             area_sqm: app.parcel?.areaSqm || '',
             land_use: app.parcel?.landUse || 'Residential',
-            region: app.parcel?.region || 'Addis Ababa',
-            city: app.parcel?.city || 'Bole',
+            region: 'Amhara',
+            city: 'Kombolcha',
             sub_city: app.parcel?.subCity || '',
             woreda: app.parcel?.woreda || '',
             applicant_name: fullName,
@@ -136,6 +136,10 @@ export default function ApplicationForm() {
             applicant_address: app.applicant_address || app.applicantAddress || '',
             description: app.description || ''
           });
+          const requiredDocumentTypes = app.required_document_types || app.requiredDocumentTypes || [];
+          if (Array.isArray(requiredDocumentTypes)) {
+            setRequiredDocsList(requiredDocumentTypes.map((docType, index) => ({ id: index + 1, docType })));
+          }
 
           if (app.parcel?.parcelCode || app.parcel?.id) {
             setSelectedParcelsList([
@@ -180,8 +184,8 @@ export default function ApplicationForm() {
         parcel_code: found.parcelCode || '',
         area_sqm: found.areaSqm ? String(found.areaSqm) : prev.area_sqm,
         land_use: found.landUse || prev.land_use,
-        region: found.region || prev.region,
-        city: found.city || prev.city,
+        region: 'Amhara',
+        city: 'Kombolcha',
         sub_city: found.subCity || prev.sub_city,
         woreda: found.woreda || prev.woreda
       }));
@@ -250,8 +254,8 @@ export default function ApplicationForm() {
       parcel_code: '',
       area_sqm: '',
       land_use: 'Residential',
-      region: 'Addis Ababa',
-      city: 'Bole',
+      region: 'Amhara',
+      city: 'Kombolcha',
       sub_city: '',
       woreda: '',
       applicant_name: '',
@@ -311,7 +315,8 @@ export default function ApplicationForm() {
         applicant_name: fullName.trim(),
         parcel_id: activeParcelId,
         parcel_code: activeParcelCode,
-        area_sqm: form.area_sqm ? parseFloat(form.area_sqm) : 250.00
+        area_sqm: form.area_sqm ? parseFloat(form.area_sqm) : 250.00,
+        required_document_types: requiredDocsList.map(doc => doc.docType)
       };
 
       if (isEditMode) {
@@ -504,7 +509,7 @@ export default function ApplicationForm() {
                     <option value="">-- Select from Registered Parcels (or type code below) --</option>
                     {parcels.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.parcelCode} ({p.areaSqm || '250'} m² - {p.landUse || 'Residential'} - {p.city || 'Addis Ababa'})
+                        {p.parcelCode} ({p.areaSqm || '250'} m² - {p.landUse || 'Residential'} - {p.city || 'Kombolcha'})
                       </option>
                     ))}
                   </select>
@@ -823,7 +828,7 @@ export default function ApplicationForm() {
                 name="applicant_address"
                 value={form.applicant_address}
                 onChange={handleChange}
-                placeholder="e.g. Addis Ababa, Sub-City Bole, Woreda 03, House No. 234"
+                placeholder="e.g. Kombolcha City, Sub-City, Woreda, House No."
                 className="w-full p-2 bg-slate-50 border border-slate-300 rounded text-xs focus:bg-white focus:border-blue-600"
                 required
               />

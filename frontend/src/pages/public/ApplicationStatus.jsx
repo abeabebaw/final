@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import API from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import StatusBadge from '../../components/StatusBadge';
-import { Search, MapPin, Calendar, FileText, CheckCircle2 } from 'lucide-react';
+import { Search, MapPin, Calendar, FileText, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 export default function ApplicationStatus() {
-  const [city, setCity] = useState('');
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [appId, setAppId] = useState('');
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,7 +23,7 @@ export default function ApplicationStatus() {
     setResult(null);
     setLoading(true);
     try {
-      const { data } = await API.get('/public/application-status', { params: { city, applicationId: appId } });
+      const { data } = await API.get('/public/application-status', { params: { applicationId: appId } });
       setResult(data);
     } catch (e) {
       setError(e.response?.data?.message || 'Application not found. Please verify the application number.');
@@ -33,11 +36,21 @@ export default function ApplicationStatus() {
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <nav className="bg-blue-950 text-white px-6 py-4 shadow-md flex justify-between items-center">
         <a href="/portal" className="text-lg font-bold text-amber-400 flex items-center gap-2">
-          CRPRS National Real Property Portal
+          Kombolcha City Real Property Portal
         </a>
-        <a href="/login" className="text-xs bg-blue-800 hover:bg-blue-700 px-3 py-1.5 rounded text-white font-medium transition">
-          Officer Login
-        </a>
+        {user?.role === 'FDO' ? (
+          <button
+            type="button"
+            onClick={() => navigate('/applications')}
+            className="text-xs bg-blue-800 hover:bg-blue-700 px-3 py-1.5 rounded text-white font-medium transition flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to FDO
+          </button>
+        ) : !user ? (
+          <a href="/login" className="text-xs bg-blue-800 hover:bg-blue-700 px-3 py-1.5 rounded text-white font-medium transition">
+            Officer Login
+          </a>
+        ) : null}
       </nav>
       
       <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
@@ -52,17 +65,7 @@ export default function ApplicationStatus() {
           </div>
 
           <form onSubmit={search} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">City / Jurisdiction (Optional):</label>
-                <input 
-                  type="text"
-                  className="w-full p-2.5 border border-slate-300 rounded text-slate-800 focus:outline-blue-500 bg-white" 
-                  value={city} 
-                  onChange={e => setCity(e.target.value)} 
-                  placeholder="e.g., Addis Ababa" 
-                />
-              </div>
+            <div className="grid grid-cols-1 gap-4 text-xs">
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">Application Number *:</label>
                 <input 
@@ -135,7 +138,7 @@ export default function ApplicationStatus() {
                   </div>
                   <div>
                     <span className="text-slate-500">Location:</span>
-                    <div className="font-medium text-slate-800">{result.city || 'N/A'}, {result.sub_city || ''}</div>
+                    <div className="font-medium text-slate-800">{result.city || 'Kombolcha'}, {result.sub_city || ''}</div>
                   </div>
                   <div>
                     <span className="text-slate-500">Land Use:</span>

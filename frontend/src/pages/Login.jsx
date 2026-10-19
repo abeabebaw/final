@@ -51,8 +51,8 @@ export default function Login() {
           <div className="inline-flex p-3 bg-[#123f32] border border-[#d8ae47]/70 rounded-2xl text-[#f3d77b] mb-1">
             <Compass className="w-8 h-8 animate-spin-slow" />
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">LOGIN TO NCRPRS</h1>
-          <p className="text-xs text-[#cfe0d5]">National Cadastre & Real Property Registration System</p>
+          <h1 className="text-2xl font-black text-white tracking-tight">KOMBOLCHA CITY CRPRS LOGIN</h1>
+          <p className="text-xs text-[#cfe0d5]">Kombolcha City Cadastre & Real Property Registration System</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

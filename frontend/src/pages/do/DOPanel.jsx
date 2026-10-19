@@ -8,6 +8,11 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const getRequiredDocumentTypes = (application) => {
+  const types = application?.required_document_types || application?.requiredDocumentTypes;
+  return Array.isArray(types) ? types.filter(type => typeof type === 'string' && type.trim()) : [];
+};
+
 export default function DOPanel() {
   const [activeTab, setActiveTab] = useState('queue'); // queue, scanner, archive, checkouts
   const [applications, setApplications] = useState([]);
@@ -28,12 +33,33 @@ export default function DOPanel() {
   // Saved documents list for target app
   const [savedDocs, setSavedDocs] = useState([]);
 
+  // Right-click context menu for attached documents
+  const [docContextMenu, setDocContextMenu] = useState(null); // { x, y, doc }
+
+  const handleDocContextMenu = (e, doc) => {
+    e.preventDefault();
+    setDocContextMenu({ x: e.clientX, y: e.clientY, doc });
+  };
+
+  const handleDocContextMenuAction = (action, doc) => {
+    if (action === 'VIEW') {
+      openDocumentView(doc.id);
+    }
+    setDocContextMenu(null);
+  };
+
+  useEffect(() => {
+    const handleClick = () => setDocContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
   // Archive physical location state
   const [archiveSearch, setArchiveSearch] = useState('');
   const [archiveDocs, setArchiveDocs] = useState([]);
   const [archiveLocation, setArchiveLocation] = useState({
-    region: 'AA',
-    city: 'Addis Ababa',
+    region: 'Amhara',
+    city: 'Kombolcha',
     wereda: '01',
     block: '05',
     section: '002',
@@ -56,7 +82,14 @@ export default function DOPanel() {
 
   useEffect(() => {
     if (selectedApp) {
+      setSavedDocs([]);
       loadDocumentsForApp(selectedApp.id);
+      const requiredDocumentTypes = getRequiredDocumentTypes(selectedApp);
+      if (requiredDocumentTypes.length > 0) {
+        setDocType(requiredDocumentTypes[0]);
+      } else {
+        setDocType('Kebele ID');
+      }
     }
   }, [selectedApp]);
 
@@ -279,7 +312,7 @@ export default function DOPanel() {
           <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <Scan className="w-6 h-6 text-blue-600" /> Document Management System (DMS) & Archiving Studio
           </h2>
-          <p className="text-xs text-slate-500 font-medium">Scanning, Document Enhancement, Physical Folder Indexing & Archival Control (CRPRS Release 2.2)</p>
+          <p className="text-xs text-slate-500 font-medium">Scanning, Document Enhancement, Physical Folder Indexing & Archival Control</p>
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <button onClick={() => setActiveTab('queue')} className={`px-4 py-2 font-bold rounded-lg transition ${activeTab==='queue'?'bg-blue-900 text-white shadow':'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
@@ -316,13 +349,14 @@ export default function DOPanel() {
                   <th className="p-3">Application Type</th>
                   <th className="p-3">Parcel UPI</th>
                   <th className="p-3">Applicant Name</th>
+                  <th className="p-3">FDO Required Documents</th>
                   <th className="p-3">Status</th>
                   <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {applications.length === 0 ? (
-                  <tr><td colSpan="6" className="p-6 text-center text-slate-400">No applications waiting for file attachment.</td></tr>
+                  <tr><td colSpan="7" className="p-6 text-center text-slate-400">No applications waiting for file attachment.</td></tr>
                 ) : (
                   applications.map(app => (
                     <tr key={app.id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -330,9 +364,20 @@ export default function DOPanel() {
                       <td className="p-3">{(app.application_type || app.applicationType)?.replace(/_/g, ' ')}</td>
                       <td className="p-3 font-mono text-xs">{app.parcel?.parcel_code || app.parcel?.parcelCode || 'N/A'}</td>
                       <td className="p-3 font-medium text-slate-800">{app.applicant_name || app.applicantName}</td>
+                      <td className="p-3">
+                        {getRequiredDocumentTypes(app).length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {getRequiredDocumentTypes(app).map(type => (
+                              <span key={type} className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded">
+                                {type}
+                              </span>
+                            ))}
+                          </div>
+                        ) : <span className="text-slate-400">Not specified</span>}
+                      </td>
                       <td className="p-3"><span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold">{app.status}</span></td>
                       <td className="p-3 text-right space-x-2">
-                        <button onClick={() => { setSelectedApp(app); setActiveTab('scanner'); }} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded shadow-sm">
+                        <button onClick={() => { setSelectedApp(app); setActiveTab('scanner'); }} disabled={app.status === 'FILE_ATTACHMENT_FINISHED'} className={`px-3 py-1.5 ${app.status === 'FILE_ATTACHMENT_FINISHED' ? 'bg-slate-400 text-slate-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} text-white font-bold rounded shadow-sm`}>
                           Attach Source Document
                         </button>
                         <button onClick={() => handleFinishAttachment(app.id)} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded shadow-sm">
@@ -362,6 +407,24 @@ export default function DOPanel() {
                 <div className="font-bold">Target App: {selectedApp.application_number || selectedApp.applicationNumber}</div>
                 <div>Applicant: {selectedApp.applicant_name || selectedApp.applicantName}</div>
                 <div className="text-slate-500 font-mono text-[11px]">Parcel: {selectedApp.parcel?.parcel_code || selectedApp.parcel?.parcelCode || 'N/A'}</div>
+                <div className="border-t border-blue-200 pt-2 mt-2">
+                  <div className="font-semibold mb-1">FDO Required Documents:</div>
+                  {getRequiredDocumentTypes(selectedApp).length > 0 ? (
+                    <ul className="space-y-1">
+                      {getRequiredDocumentTypes(selectedApp).map(type => {
+                        const uploaded = savedDocs.some(doc => (doc.document_type || doc.documentType) === type);
+                        return (
+                          <li key={type} className="flex justify-between gap-2">
+                            <span>{type}</span>
+                            <span className={uploaded ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'}>
+                              {uploaded ? 'Uploaded' : 'Pending'}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : <div className="text-slate-500">No document types specified by FDO.</div>}
+                </div>
               </div>
             ) : (
               <div className="bg-amber-50 border border-amber-200 p-3 rounded text-xs text-amber-800">
@@ -382,13 +445,19 @@ export default function DOPanel() {
               <div>
                 <label className="block text-slate-700 font-semibold mb-1">Document Type:</label>
                 <select value={docType} onChange={e => setDocType(e.target.value)} className="w-full p-2 border border-slate-300 rounded bg-white">
-                  <option value="Kebele ID">Kebele Identification Card</option>
-                  <option value="Passport">Passport</option>
-                  <option value="Title Certificate">Landholding Title Certificate</option>
-                  <option value="Sale Contract">Sale Contract Agreement</option>
-                  <option value="Court Injunction">Court Injunction Letter</option>
-                  <option value="Mortgage Deed">Mortgage Deed / Loan Contract</option>
-                  <option value="Survey Cadastral Plan">Cadastral Survey Plan</option>
+                  {getRequiredDocumentTypes(selectedApp).length > 0 ? (
+                    getRequiredDocumentTypes(selectedApp).map(type => <option key={type} value={type}>{type}</option>)
+                  ) : (
+                    <>
+                      <option value="Kebele ID">Kebele Identification Card</option>
+                      <option value="Passport">Passport</option>
+                      <option value="Title Certificate">Landholding Title Certificate</option>
+                      <option value="Sale Contract">Sale Contract Agreement</option>
+                      <option value="Court Injunction">Court Injunction Letter</option>
+                      <option value="Mortgage Deed">Mortgage Deed / Loan Contract</option>
+                      <option value="Survey Cadastral Plan">Cadastral Survey Plan</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -487,7 +556,7 @@ export default function DOPanel() {
                       <tr><td colSpan="6" className="p-4 text-center text-slate-400">No documents attached yet for this application.</td></tr>
                     ) : (
                       savedDocs.map(d => (
-                        <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50">
+                        <tr key={d.id} className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer" onContextMenu={(e) => handleDocContextMenu(e, d)}>
                           <td className="p-2"><span className="px-2 py-0.5 bg-blue-50 text-blue-800 rounded font-semibold text-xs">{d.category}</span></td>
                           <td className="p-2 font-medium">{d.documentType || d.docType}</td>
                           <td className="p-2 font-mono text-slate-800">{d.referenceNumber || d.refNumber}</td>
@@ -513,6 +582,23 @@ export default function DOPanel() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Right-click Context Menu for Attached Documents */}
+              {docContextMenu && (
+                <div
+                  className="fixed z-50 bg-white text-slate-800 border border-slate-200 shadow-xl rounded-md py-1 min-w-[140px] text-xs font-sans"
+                  style={{ top: `${docContextMenu.y}px`, left: `${docContextMenu.x}px` }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    onClick={() => handleDocContextMenuAction('VIEW', docContextMenu.doc)}
+                    className="px-4 py-2 hover:bg-slate-100 cursor-pointer flex items-center gap-2"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>View Document</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -525,18 +611,10 @@ export default function DOPanel() {
             <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
               <Archive className="w-5 h-5 text-indigo-600" /> Physical Archive Storage Location Manager
             </h3>
-            <p className="text-xs text-slate-500">Configure physical folder locations (Region, City, Wereda, Block, Shelf Number, Cell Number)</p>
+            <p className="text-xs text-slate-500">Configure physical folder locations in Kombolcha City (Wereda, Block, Shelf Number, Cell Number)</p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
-            <div>
-              <label className="block text-slate-600 font-semibold mb-1">Region Code:</label>
-              <input type="text" value={archiveLocation.region} onChange={e => setArchiveLocation({...archiveLocation, region: e.target.value})} className="w-full p-2 border border-slate-300 rounded" />
-            </div>
-            <div>
-              <label className="block text-slate-600 font-semibold mb-1">City Code:</label>
-              <input type="text" value={archiveLocation.city} onChange={e => setArchiveLocation({...archiveLocation, city: e.target.value})} className="w-full p-2 border border-slate-300 rounded" />
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div>
               <label className="block text-slate-600 font-semibold mb-1">Wereda Code:</label>
               <input type="text" value={archiveLocation.wereda} onChange={e => setArchiveLocation({...archiveLocation, wereda: e.target.value})} className="w-full p-2 border border-slate-300 rounded" />

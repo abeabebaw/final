@@ -1,11 +1,12 @@
 const prisma = require('../config/prisma');
 const { NotFoundError, ConflictError, ValidationError } = require('../utils/errors');
+const { serialize } = require('../utils/serializer');
 
 exports.getAll = async (req, res, next) => {
   try {
     const { search, is_registered, city, limit = 100 } = req.query;
     
-    const where = {};
+    const where = { splitChildren: { none: {} } };
     
     if (search) {
       where.OR = [
@@ -14,22 +15,66 @@ exports.getAll = async (req, res, next) => {
         { region: { contains: search, mode: 'insensitive' } }
       ];
     }
+
+    if (city) {
+      where.city = { contains: city, mode: 'insensitive' };
+    }
     
     if (is_registered !== undefined) {
       where.isRegistered = is_registered === 'true';
     }
     
-    if (city) {
-      where.city = { contains: city, mode: 'insensitive' };
-    }
-
     const parcels = await prisma.parcel.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: parseInt(limit)
+      take: parseInt(limit),
+      include: {
+        parties: {
+          select: {
+            partyType: true,
+            firstName: true,
+            fatherName: true,
+            grandfatherName: true,
+            organizationName: true
+          }
+        },
+        rights: {
+          where: { status: 'ACTIVE' },
+          select: {
+            holder: {
+              select: {
+                firstName: true,
+                fatherName: true,
+                grandfatherName: true,
+                organizationName: true
+              }
+            }
+          }
+        }
+      }
     });
 
-    res.json(parcels);
+    const parcelsWithOwners = parcels.map(({ parties, rights, ...parcel }) => {
+      const holderNames = [
+        ...parties.map(party => party.organizationName || [
+          party.firstName,
+          party.fatherName,
+          party.grandfatherName
+        ].filter(Boolean).join(' ')),
+        ...rights.map(({ holder }) => holder?.organizationName || [
+          holder?.firstName,
+          holder?.fatherName,
+          holder?.grandfatherName
+        ].filter(Boolean).join(' '))
+      ].filter(Boolean);
+
+      return {
+        ...parcel,
+        owner: [...new Set(holderNames)].join(', ')
+      };
+    });
+
+    res.json(serialize(parcelsWithOwners));
   } catch (err) {
     console.error('Get parcels error:', err);
     next(err);
@@ -49,7 +94,11 @@ exports.getById = async (req, res, next) => {
           include: {
             holder: true
           }
-        }
+        },
+        parties: true,
+        mortgages: true,
+        courtInjunctions: true,
+        restrictions: true
       }
     });
 
@@ -57,7 +106,7 @@ exports.getById = async (req, res, next) => {
       throw new NotFoundError('Parcel not found');
     }
 
-    res.json(parcel);
+    res.json(serialize(parcel));
   } catch (err) {
     console.error('Get parcel error:', err);
     next(err);
@@ -70,8 +119,8 @@ exports.create = async (req, res, next) => {
       parcel_code, 
       area_sqm, 
       land_use, 
-      region, 
-      city, 
+      region,
+      city,
       sub_city, 
       woreda, 
       geometry_wkt,
@@ -81,7 +130,6 @@ exports.create = async (req, res, next) => {
     if (!parcel_code) {
       throw new ValidationError('Parcel code is required');
     }
-
     // Check if parcel code already exists
     const exists = await prisma.parcel.findUnique({
       where: { parcelCode: parcel_code }
@@ -105,7 +153,7 @@ exports.create = async (req, res, next) => {
       }
     });
 
-    res.status(201).json(parcel);
+    res.status(201).json(serialize(parcel));
   } catch (err) {
     console.error('Create parcel error:', err);
     next(err);
@@ -152,7 +200,7 @@ exports.update = async (req, res, next) => {
       data: updateData
     });
 
-    res.json(parcel);
+    res.json(serialize(parcel));
   } catch (err) {
     console.error('Update parcel error:', err);
     next(err);

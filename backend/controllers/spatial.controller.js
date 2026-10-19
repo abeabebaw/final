@@ -191,6 +191,10 @@ exports.getParcelsGeoJson = async (req, res, next) => {
           ), '[]'::json)
         ) AS geojson
         FROM parcels p
+        WHERE p.city ILIKE '%Kombolcha%'
+          AND NOT EXISTS (
+            SELECT 1 FROM parcels child WHERE child.parent_parcel_id=p.id
+          )
       `);
 
       if (result.rows[0]?.geojson) {
@@ -202,6 +206,10 @@ exports.getParcelsGeoJson = async (req, res, next) => {
 
     // Fallback: build standard FeatureCollection from Prisma records
     const parcels = await prisma.parcel.findMany({
+      where: {
+        city: { contains: 'Kombolcha', mode: 'insensitive' },
+        splitChildren: { none: {} }
+      },
       orderBy: { createdAt: 'desc' },
       take: 200
     });
@@ -224,22 +232,6 @@ exports.getParcelsGeoJson = async (req, res, next) => {
         }
       }
 
-      // Default synthetic bounding box around Addis Ababa if geometry not set
-      if (!geometry) {
-        const baseLat = 9.0192 + (idx * 0.001);
-        const baseLng = 38.7525 + (idx * 0.001);
-        geometry = {
-          type: 'Polygon',
-          coordinates: [[
-            [baseLng, baseLat],
-            [baseLng + 0.0008, baseLat],
-            [baseLng + 0.0008, baseLat + 0.0008],
-            [baseLng, baseLat + 0.0008],
-            [baseLng, baseLat]
-          ]]
-        };
-      }
-
       return {
         type: 'Feature',
         id: p.id,
@@ -249,10 +241,10 @@ exports.getParcelsGeoJson = async (req, res, next) => {
           parcelCode: p.parcelCode,
           areaSqm: p.areaSqm ? Number(p.areaSqm) : null,
           landUse: p.landUse || 'Residential',
-          city: p.city || 'Addis Ababa',
-          region: p.region || 'AA',
-          subCity: p.subCity || 'Kirkos',
-          woreda: p.woreda || '01',
+          city: p.city || 'Kombolcha',
+          region: p.region || 'Amhara',
+          subCity: p.subCity || '',
+          woreda: p.woreda || '',
           isRegistered: p.isRegistered
         }
       };
@@ -272,57 +264,89 @@ exports.getParcelsGeoJson = async (req, res, next) => {
 // Parcel Split
 exports.splitParcel = async (req, res, next) => {
   try {
-    const { parcel_id, split_ratio = 0.5, new_parcel_codes, remarks } = req.body;
+    const { parcel_id, transaction_id, sub_parcels, remarks } = req.body;
 
     if (!parcel_id) {
       throw new ValidationError('Parcel ID is required for parcel split');
     }
+    if (!transaction_id) {
+      throw new ValidationError('Transaction ID is required for parcel split');
+    }
+    if (!Array.isArray(sub_parcels) || sub_parcels.length !== 2) {
+      throw new ValidationError('A parcel split must provide exactly two sub-parcels');
+    }
+    if (sub_parcels.some(parcel => !parcel || typeof parcel !== 'object')) {
+      throw new ValidationError('Each sub-parcel must be an object');
+    }
+    if (new Set(sub_parcels.map(parcel => parcel.parcel_code)).size !== 2) {
+      throw new ValidationError('Split parcel codes must be unique');
+    }
+    for (const parcel of sub_parcels) {
+      if (
+        typeof parcel.parcel_code !== 'string'
+        || !parcel.parcel_code.trim()
+        || parcel.parcel_code.length > 50
+        || !Number.isFinite(Number(parcel.area_sqm))
+        || Number(parcel.area_sqm) <= 0
+      ) {
+        throw new ValidationError('Each sub-parcel requires a parcel code and a positive area');
+      }
+      if (typeof parcel.geometry_wkt !== 'string' || !/^POLYGON\s*\(\(/i.test(parcel.geometry_wkt.trim())) {
+        throw new ValidationError('Each sub-parcel requires polygon geometry');
+      }
+    }
+
+    const transaction = await prisma.transaction.findUnique({
+      where: { id: transaction_id },
+      select: { parcelId: true, status: true }
+    });
+    if (!transaction) {
+      throw new NotFoundError('Transaction not found');
+    }
+    if (transaction.parcelId !== parcel_id) {
+      throw new ValidationError('The selected parcel does not belong to this transaction');
+    }
+    if (transaction.status !== 'IN_PROCESS') {
+      throw new ValidationError('The transaction must be in process before its parcel can be split');
+    }
 
     const parentParcel = await prisma.parcel.findUnique({
-      where: { id: parcel_id },
-      include: { rights: true }
+      where: { id: parcel_id }
     });
 
     if (!parentParcel) {
       throw new NotFoundError('Parent parcel not found');
     }
-
-    const totalArea = parentParcel.areaSqm ? Number(parentParcel.areaSqm) : 400;
-    const ratio = Math.max(0.1, Math.min(0.9, Number(split_ratio)));
-    const area1 = (totalArea * ratio).toFixed(2);
-    const area2 = (totalArea * (1 - ratio)).toFixed(2);
-
-    const code1 = new_parcel_codes?.[0] || `${parentParcel.parcelCode}-S1`;
-    const code2 = new_parcel_codes?.[1] || `${parentParcel.parcelCode}-S2`;
+    if (await prisma.parcel.findFirst({ where: { splitTransactionId: transaction_id } })) {
+      throw new ValidationError('This transaction already has split parcels');
+    }
+    const existingCodes = await prisma.parcel.findMany({
+      where: { parcelCode: { in: sub_parcels.map(parcel => parcel.parcel_code) } },
+      select: { parcelCode: true }
+    });
+    if (existingCodes.length) {
+      throw new ValidationError(`Parcel code already exists: ${existingCodes.map(parcel => parcel.parcelCode).join(', ')}`);
+    }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Create sub-parcel 1
-      const sub1 = await tx.parcel.create({
-        data: {
-          parcelCode: code1,
-          areaSqm: parseFloat(area1),
-          landUse: parentParcel.landUse,
-          region: parentParcel.region,
-          city: parentParcel.city,
-          subCity: parentParcel.subCity,
-          woreda: parentParcel.woreda,
-          isRegistered: false
-        }
-      });
-
-      // Create sub-parcel 2
-      const sub2 = await tx.parcel.create({
-        data: {
-          parcelCode: code2,
-          areaSqm: parseFloat(area2),
-          landUse: parentParcel.landUse,
-          region: parentParcel.region,
-          city: parentParcel.city,
-          subCity: parentParcel.subCity,
-          woreda: parentParcel.woreda,
-          isRegistered: false
-        }
-      });
+      const subParcels = [];
+      for (const parcel of sub_parcels) {
+        subParcels.push(await tx.parcel.create({
+          data: {
+            parcelCode: parcel.parcel_code,
+            areaSqm: Number(parcel.area_sqm),
+            geometryWkt: parcel.geometry_wkt,
+            landUse: parentParcel.landUse,
+            region: parentParcel.region,
+            city: parentParcel.city,
+            subCity: parentParcel.subCity,
+            woreda: parentParcel.woreda,
+            parentParcelId: parcel_id,
+            splitTransactionId: transaction_id,
+            isRegistered: false
+          }
+        }));
+      }
 
       // Mark parent parcel as superseded / inactive
       await tx.parcel.update({
@@ -330,7 +354,7 @@ exports.splitParcel = async (req, res, next) => {
         data: { isRegistered: false }
       });
 
-      return { parent: parentParcel, subParcels: [sub1, sub2] };
+      return { parent: parentParcel, subParcels };
     });
 
     await createAuditLog({
@@ -340,8 +364,9 @@ exports.splitParcel = async (req, res, next) => {
       entityId: parcel_id,
       previousValue: { parcelCode: parentParcel.parcelCode, areaSqm: parentParcel.areaSqm },
       newValue: {
-        splitInto: [result.subParcels[0].parcelCode, result.subParcels[1].parcelCode],
-        areas: [area1, area2],
+        splitInto: result.subParcels.map(parcel => parcel.parcelCode),
+        areas: result.subParcels.map(parcel => parcel.areaSqm),
+        transactionId: transaction_id,
         remarks: remarks || 'Cadastral parcel split'
       },
       req

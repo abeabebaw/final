@@ -4,6 +4,16 @@ const { ValidationError, NotFoundError, BadRequestError, DatabaseError, handlePr
 const { serialize } = require('../utils/serializer');
 const { createAuditLog } = require('../utils/audit');
 
+const normalizeRequiredDocumentTypes = (value) => {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value) || value.some(type => typeof type !== 'string' || !type.trim())) {
+    throw new ValidationError('Required document types must be a list of non-empty strings');
+  }
+  return [...new Set(value.map(type => type.trim()))];
+};
+
 const generateAppNumber = async () => {
   const year = new Date().getFullYear();
   const count = await prisma.application.count({
@@ -268,17 +278,18 @@ exports.create = async (req, res, next) => {
       applicant_email, 
       applicant_id_number, 
       applicant_id_type, 
+      required_document_types,
       description 
     } = req.body;
 
     // Validate required fields
     const cleanAppType = application_type || 'FIRST_REGISTRATION';
     const cleanApplicantName = (applicant_name || '').trim();
+    const cleanRequiredDocumentTypes = normalizeRequiredDocumentTypes(required_document_types);
 
     if (!cleanApplicantName) {
       throw new ValidationError('Applicant name is required');
     }
-
     let finalParcelId = null;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -287,14 +298,10 @@ exports.create = async (req, res, next) => {
       const cleanId = parcel_id.trim();
       if (uuidRegex.test(cleanId)) {
         const existing = await prisma.parcel.findUnique({ where: { id: cleanId } }).catch(() => null);
-        if (existing) {
-          finalParcelId = existing.id;
-        }
+        if (existing) finalParcelId = existing.id;
       } else {
         const existing = await prisma.parcel.findUnique({ where: { parcelCode: cleanId } }).catch(() => null);
-        if (existing) {
-          finalParcelId = existing.id;
-        }
+        if (existing) finalParcelId = existing.id;
       }
     }
 
@@ -302,9 +309,7 @@ exports.create = async (req, res, next) => {
     if (!finalParcelId && parcel_code && typeof parcel_code === 'string' && parcel_code.trim() !== '') {
       const cleanCode = parcel_code.trim();
       const existing = await prisma.parcel.findUnique({ where: { parcelCode: cleanCode } }).catch(() => null);
-      if (existing) {
-        finalParcelId = existing.id;
-      }
+      if (existing) finalParcelId = existing.id;
     }
 
     // 3. If no existing parcel found:
@@ -388,6 +393,7 @@ exports.create = async (req, res, next) => {
           applicantEmail: applicant_email || null,
           applicantIdNumber: applicant_id_number || null,
           applicantIdType: applicant_id_type || 'KEBELE_ID',
+          requiredDocumentTypes: cleanRequiredDocumentTypes,
           description: description || null,
           submittedBy: req.user?.id || null
         },
@@ -444,6 +450,15 @@ exports.update = async (req, res, next) => {
     const { id } = req.params;
     const { applicant_name, applicant_type, applicant_address, applicant_phone,
             applicant_email, applicant_id_number, applicant_id_type, description } = req.body;
+    const hasRequiredDocumentTypes = Object.prototype.hasOwnProperty.call(req.body, 'required_document_types')
+      || Object.prototype.hasOwnProperty.call(req.body, 'requiredDocumentTypes');
+    const requiredDocumentTypes = hasRequiredDocumentTypes
+      ? normalizeRequiredDocumentTypes(
+        Object.prototype.hasOwnProperty.call(req.body, 'required_document_types')
+          ? req.body.required_document_types
+          : req.body.requiredDocumentTypes
+      )
+      : undefined;
     
     // Check if application exists and is in SUBMITTED status
     const existingApp = await prisma.application.findUnique({
@@ -469,6 +484,7 @@ exports.update = async (req, res, next) => {
         applicantEmail: applicant_email || null,
         applicantIdNumber: applicant_id_number || null,
         applicantIdType: applicant_id_type || null,
+        ...(hasRequiredDocumentTypes ? { requiredDocumentTypes } : {}),
         description: description || null
       },
       include: {

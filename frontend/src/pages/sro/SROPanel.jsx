@@ -993,15 +993,15 @@ function PartyDetailModal({ party, onClose }) {
             <h5 className="font-bold text-slate-800 text-[11px] mb-2">Address Information</h5>
             <div>
               <span className="text-slate-600 block">Region:*</span>
-              <input type="text" readOnly value="Dire Dawa" className="w-full p-1.5 border border-slate-300 rounded bg-white font-medium" />
+              <input type="text" readOnly value="Amhara" className="w-full p-1.5 border border-slate-300 rounded bg-white font-medium" />
             </div>
             <div>
               <span className="text-slate-600 block">Zone:*</span>
-              <input type="text" readOnly value="DireDawa" className="w-full p-1.5 border border-slate-300 rounded bg-white" />
+              <input type="text" readOnly value="South Wollo" className="w-full p-1.5 border border-slate-300 rounded bg-white" />
             </div>
             <div>
               <span className="text-slate-600 block">City:*</span>
-              <input type="text" readOnly value="DireDawa" className="w-full p-1.5 border border-slate-300 rounded bg-white" />
+              <input type="text" readOnly value="Kombolcha" className="w-full p-1.5 border border-slate-300 rounded bg-white" />
             </div>
             <div>
               <span className="text-slate-600 block">Sub City:</span>
@@ -1093,7 +1093,7 @@ function TitleCertificateModal({ txn, party, right, onClose }) {
               LAND HOLDING RIGHTS CERTIFICATE
             </h2>
             <p className="text-[10px] text-slate-600 font-semibold mt-1">
-              CITY GOVERNMENT OF {txn.city?.toUpperCase() || 'ADDIS ABABA'}
+              CITY GOVERNMENT OF KOMBOLCHA
             </p>
             <p className="text-[9px] text-slate-500 uppercase tracking-tight">
               Landholding Registration and Information Agency — City Registry Office
@@ -1181,7 +1181,7 @@ function TitleCertificateModal({ txn, party, right, onClose }) {
                 <div className="pt-1 grid grid-cols-2 gap-1 text-[9px]">
                   <div><span className="text-slate-500">ስፋት / Area:</span> <strong>{txn.area_sqm || '254.70'} m²</strong></div>
                   <div><span className="text-slate-500">አገልግሎት / Land Use:</span> <strong>{txn.land_use || 'Residence'}</strong></div>
-                  <div><span className="text-slate-500">ክፍለ ከተማ / Sub-City:</span> <strong>{txn.sub_city || 'Kirkos'}</strong></div>
+                  <div><span className="text-slate-500">ክፍለ ከተማ / Sub-City:</span> <strong>{txn.sub_city || '—'}</strong></div>
                   <div><span className="text-slate-500">ወረዳ / Woreda:</span> <strong>{txn.woreda || '03'}</strong></div>
                 </div>
               </div>
@@ -1569,7 +1569,7 @@ function ConfirmationLetterModal({ letter, txn, party, onClose }) {
               LANDHOLDING REGISTRATION AND INFORMATION AGENCY
             </h2>
             <p className="text-[10px] text-slate-600 font-semibold mt-1">
-              CITY REGISTRY & LAND TITLES OFFICE — {txn.city?.toUpperCase() || 'ADDIS ABABA'}
+              CITY REGISTRY & LAND TITLES OFFICE — KOMBOLCHA
             </p>
           </div>
 
@@ -1588,7 +1588,7 @@ function ConfirmationLetterModal({ letter, txn, party, onClose }) {
           {/* Recipient Address */}
           <div className="pt-2 text-xs font-semibold text-slate-800 space-y-0.5">
             <div>ለ: {isMortgage ? (item.mortgagee_name || 'የኢትዮጵያ ንግድ ባንክ / Commercial Bank of Ethiopia') : (item.court_name || 'ለፌዴራል የመጀመሪያ ደረጃ ፍርድ ቤት')}</div>
-            <div className="text-slate-600 text-[11px]">{txn.city || 'አዲስ አበባ / Addis Ababa'}</div>
+            <div className="text-slate-600 text-[11px]">Kombolcha</div>
           </div>
 
           {/* Subject */}

@@ -1447,4 +1447,66 @@ tbody td {
     box-shadow: none;
     border: 1px solid #e2e8f0;
   }
+
+  @page {
+    size: landscape;
+    margin: 8mm;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  .recs-desktop-app {
+    position: fixed !important;
+    inset: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .recs-desktop-app > :not(.gis-print-workspace),
+  .gis-print-workspace > :not(.gis-print-map-column),
+  .gis-print-map-column > :not(.gis-print-map) {
+    display: none !important;
+  }
+
+  .gis-print-workspace,
+  .gis-print-map-column,
+  .gis-print-map {
+    position: absolute !important;
+    inset: 0 !important;
+    display: block !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .gis-print-map .leaflet-container {
+    width: 100% !important;
+    height: 100% !important;
+    background: #fff !important;
+  }
+
+  .gis-print-map .leaflet-control-zoom {
+    display: none !important;
+  }
+
+  .gis-print-map .leaflet-container,
+  .gis-print-map .leaflet-pane,
+  .gis-print-map .leaflet-tile,
+  .gis-print-map .leaflet-marker-icon,
+  .gis-print-map .leaflet-marker-shadow {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }

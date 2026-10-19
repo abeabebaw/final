@@ -19,6 +19,154 @@ import { useAuth } from '../../context/AuthContext';
 import RECSLoginModal from './RECSLoginModal';
 import AddVectorLayerModal, { SAMPLE_SURVEY_DATASETS } from './AddVectorLayerModal';
 
+const KOMBOLCHA_CENTER = [11.0864, 39.7368];
+
+function wktToLatLngs(wkt) {
+  if (!wkt || typeof wkt !== 'string') return [];
+  const match = wkt.match(/\(\(([\s\S]*?)\)\)/);
+  if (!match) return [];
+  const coords = match[1].split(',').map((pair) => {
+    const parts = pair.trim().split(/\s+/).map(Number);
+    if (parts.length < 2 || Number.isNaN(parts[0]) || Number.isNaN(parts[1])) return null;
+    return [parts[1], parts[0]];
+  }).filter(Boolean);
+  if (coords.length < 3) return [];
+  const first = coords[0];
+  const last = coords[coords.length - 1];
+  if (first[0] === last[0] && first[1] === last[1]) coords.pop();
+  return coords;
+}
+
+function latLngsToWkt(coords) {
+  if (!coords || coords.length < 3) return null;
+  const ring = coords.map(([lat, lng]) => [lat, lng]);
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]);
+  return `POLYGON((${ring.map(([lat, lng]) => `${lng} ${lat}`).join(', ')}))`;
+}
+
+function polygonAreaSqm(coords) {
+  if (!coords || coords.length < 3) return 0;
+  const closed = coords.map(([lat, lng]) => [lat, lng]);
+  const first = closed[0];
+  const last = closed[closed.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) closed.push([...first]);
+  const R = 6371000;
+  let area = 0;
+  for (let i = 0; i < closed.length - 1; i++) {
+    const lat1 = closed[i][0] * Math.PI / 180;
+    const lat2 = closed[i + 1][0] * Math.PI / 180;
+    const lng1 = closed[i][1] * Math.PI / 180;
+    const lng2 = closed[i + 1][1] * Math.PI / 180;
+    area += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  return Math.abs(area * R * R / 2);
+}
+
+function splitPolygonByLine(coords, start, end) {
+  if (!Array.isArray(coords) || coords.length < 3 || !start || !end) return null;
+
+  const ring = coords.map(([lat, lng]) => [lat, lng]);
+  if (ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]) {
+    ring.pop();
+  }
+  if (ring.length < 3) return null;
+
+  const origin = { x: start.lng, y: start.lat };
+  const direction = { x: end.lng - start.lng, y: end.lat - start.lat };
+  const directionLength = Math.hypot(direction.x, direction.y);
+  if (directionLength < 1e-10) return null;
+
+  const tolerance = 1e-12;
+  const sideOfLine = ([lat, lng]) => (
+    direction.x * (lat - origin.y) - direction.y * (lng - origin.x)
+  );
+  const intersections = [];
+  const addIntersection = (edgeIndex, t, point) => {
+    const linePosition = (
+      (point[1] - origin.x) * direction.x + (point[0] - origin.y) * direction.y
+    ) / (directionLength * directionLength);
+    if (linePosition < -tolerance || linePosition > 1 + tolerance) return;
+
+    const normalizedEdgeIndex = t >= 1 - tolerance ? (edgeIndex + 1) % ring.length : edgeIndex;
+    const normalizedT = t >= 1 - tolerance ? 0 : t;
+    if (intersections.some(intersection => (
+      Math.hypot(intersection.point[0] - point[0], intersection.point[1] - point[1]) < 1e-10
+    ))) return;
+    intersections.push({ edgeIndex: normalizedEdgeIndex, t: normalizedT, point });
+  };
+
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    const sideA = sideOfLine(a);
+    const sideB = sideOfLine(b);
+
+    if (Math.abs(sideA) <= tolerance && Math.abs(sideB) <= tolerance) continue;
+    if (Math.abs(sideA) <= tolerance) {
+      addIntersection(i, 0, a);
+    } else if (Math.abs(sideB) > tolerance && sideA * sideB < 0) {
+      const t = sideA / (sideA - sideB);
+      addIntersection(i, t, [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t
+      ]);
+    }
+  }
+
+  if (intersections.length !== 2) return null;
+  intersections.sort((a, b) => (a.edgeIndex + a.t) - (b.edgeIndex + b.t));
+
+  const pathAlongRing = (from, to) => {
+    const path = [from.point];
+    let edgeIndex = from.edgeIndex;
+    let traversed = 0;
+    while (edgeIndex !== to.edgeIndex && traversed < ring.length) {
+      path.push(ring[(edgeIndex + 1) % ring.length]);
+      edgeIndex = (edgeIndex + 1) % ring.length;
+      traversed++;
+    }
+    path.push(to.point);
+    return path;
+  };
+
+  const firstHalf = pathAlongRing(intersections[0], intersections[1]);
+  const secondHalf = pathAlongRing(intersections[1], intersections[0]);
+  if (firstHalf.length < 3 || secondHalf.length < 3) return null;
+  if (polygonAreaSqm(firstHalf) < 0.01 || polygonAreaSqm(secondHalf) < 0.01) return null;
+  return [firstHalf, secondHalf];
+}
+
+function mapApiParcel(p) {
+  const wkt = p.geometry_wkt || p.geometryWkt;
+  return {
+    id: p.id,
+    parcelCode: p.parcel_code || p.parcelCode,
+    owner: p.owner || 'Unregistered',
+    landUse: p.land_use || p.landUse || 'Residential',
+    areaSqm: Number(p.area_sqm ?? p.areaSqm ?? 0),
+    status: (p.is_registered ?? p.isRegistered) ? 'ACTIVE' : 'PENDING',
+    coordinates: wktToLatLngs(wkt),
+    region: p.region || 'Amhara',
+    city: p.city || 'Kombolcha'
+  };
+}
+
+function borderPointsFromParcels(parcelList) {
+  const points = [];
+  parcelList.forEach((parcel) => {
+    (parcel.coordinates || []).forEach((coord, idx) => {
+      points.push({
+        id: `${parcel.id}-bp-${idx + 1}`,
+        name: `${parcel.parcelCode}-P${idx + 1}`,
+        coords: coord
+      });
+    });
+  });
+  return points;
+}
+
 // --- UTM Zone 37N (EPSG:20137 / WGS84 Transverse Mercator for Ethiopia) ---
 function latLngToUtm37N(lat, lng) {
   const a = 6378137.0;
@@ -94,10 +242,10 @@ function MapActionController({ mapAction, onActionExecuted }) {
     } else if (mapAction.type === 'ZOOM_OUT') {
       map.zoomOut();
     } else if (mapAction.type === 'ZOOM_FULL') {
-      map.setView([7.0630, 38.4760], 16);
+      map.setView(KOMBOLCHA_CENTER, 16);
     } else if (mapAction.type === 'ZOOM_1_1') {
       map.setZoom(18);
-    } else if (mapAction.type === 'ZOOM_TO_PARCEL' && mapAction.coords) {
+    } else if (mapAction.type === 'ZOOM_TO_PARCEL' && mapAction.coords?.length >= 2) {
       map.flyToBounds(mapAction.coords, { maxZoom: 18, duration: 0.8 });
     } else if (mapAction.type === 'ZOOM_TO_POINTS' && mapAction.points) {
       const bounds = L.latLngBounds(mapAction.points.map(pt => [pt.lat, pt.lng]));
@@ -110,9 +258,118 @@ function MapActionController({ mapAction, onActionExecuted }) {
   return null;
 }
 
+function MapDrawHandler({
+  activeTool,
+  editingEnabled,
+  splitMode,
+  onAddVertex,
+  onFinishShape,
+  onDrawPoint,
+  onSplitDragStart,
+  onSplitDragMove,
+  onSplitComplete
+}) {
+  const map = useMap();
+  const splitDragRef = useRef(null);
+  const splitCallbacksRef = useRef({});
+  splitCallbacksRef.current = { onSplitDragStart, onSplitDragMove, onSplitComplete };
+  const drawing = activeTool === 'draw_polygon' || activeTool === 'draw_line' || activeTool === 'draw_point';
+
+  useEffect(() => {
+    if (drawing) {
+      map.doubleClickZoom.disable();
+      map.getContainer().style.cursor = 'crosshair';
+    } else {
+      map.doubleClickZoom.enable();
+      map.getContainer().style.cursor = '';
+    }
+    return () => {
+      map.doubleClickZoom.enable();
+      map.getContainer().style.cursor = '';
+    };
+  }, [drawing, map]);
+
+  useEffect(() => {
+    if (!splitMode || !editingEnabled) {
+      splitDragRef.current = null;
+      return undefined;
+    }
+
+    const wasDraggingEnabled = map.dragging.enabled();
+    map.dragging.disable();
+    map.getContainer().style.cursor = 'crosshair';
+
+    const handlePointerDown = (event) => {
+      if (event.button !== 0 || splitDragRef.current) return;
+      L.DomEvent.stopPropagation(event);
+      event.preventDefault();
+      const point = map.mouseEventToLatLng(event);
+      splitDragRef.current = point;
+      splitCallbacksRef.current.onSplitDragStart(point);
+    };
+    const handlePointerMove = (event) => {
+      if (!splitDragRef.current) return;
+      splitCallbacksRef.current.onSplitDragMove(map.mouseEventToLatLng(event));
+    };
+    const handlePointerUp = (event) => {
+      if (!splitDragRef.current) return;
+      L.DomEvent.stopPropagation(event);
+      const start = splitDragRef.current;
+      const end = map.mouseEventToLatLng(event);
+      splitDragRef.current = null;
+      splitCallbacksRef.current.onSplitComplete(start, end);
+    };
+
+    const container = map.getContainer();
+    container.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+
+    return () => {
+      container.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      if (wasDraggingEnabled) map.dragging.enable();
+      map.getContainer().style.cursor = '';
+    };
+  }, [
+    splitMode,
+    editingEnabled,
+    map
+  ]);
+
+  useMapEvents({
+    click(e) {
+      if (splitMode) {
+        L.DomEvent.stopPropagation(e.originalEvent);
+        return;
+      }
+      if (!editingEnabled) return;
+      L.DomEvent.stopPropagation(e.originalEvent);
+      const point = { lat: e.latlng.lat, lng: e.latlng.lng };
+      if (activeTool === 'draw_point') onDrawPoint(point);
+      if (activeTool === 'draw_polygon' || activeTool === 'draw_line') onAddVertex(point);
+    },
+    dblclick(e) {
+      if (!editingEnabled) return;
+      L.DomEvent.stop(e.originalEvent);
+      if (activeTool === 'draw_polygon' || activeTool === 'draw_line') onFinishShape();
+    },
+    contextmenu(e) {
+      if (!editingEnabled) return;
+      if (activeTool === 'draw_polygon' || activeTool === 'draw_line') {
+        L.DomEvent.preventDefault(e.originalEvent);
+        onFinishShape();
+      }
+    }
+  });
+
+  return null;
+}
+
 // --- Initial Cadastral Layout (Subdivisions matching Ethiopian Cadastre Grid) ---
-const BASE_LAT = 7.0620;
-const BASE_LNG = 38.4730;
+const BASE_LAT = KOMBOLCHA_CENTER[0];
+const BASE_LNG = KOMBOLCHA_CENTER[1];
 
 const INITIAL_PARCELS = [
   {
@@ -355,6 +612,7 @@ export default function RECSPanel() {
   // Active Tool state
   const [activeTool, setActiveTool] = useState('pan');
   const [editingEnabled, setEditingEnabled] = useState(false);
+  const [sketchPoints, setSketchPoints] = useState([]);
 
   // Map state
   const [currentCoords, setCurrentCoords] = useState({ easting: '444011.22', northing: '778758.30' });
@@ -383,7 +641,7 @@ export default function RECSPanel() {
   const [controlRenderOrder, setControlRenderOrder] = useState(true);
 
   // Spatial data state
-  const [parcels, setParcels] = useState(INITIAL_PARCELS);
+  const [parcels, setParcels] = useState([]);
   const [buildings, setBuildings] = useState(INITIAL_BUILDINGS);
   const [borderPoints, setBorderPoints] = useState(INITIAL_BORDER_POINTS);
   const [servitudes, setServitudes] = useState(INITIAL_SERVITUDES);
@@ -392,12 +650,22 @@ export default function RECSPanel() {
   const [selectedParcelIds, setSelectedParcelIds] = useState([]);
   const [identifyModalParcel, setIdentifyModalParcel] = useState(null);
   const [showAttributeTable, setShowAttributeTable] = useState(false);
-  const [history, setHistory] = useState([INITIAL_PARCELS]);
+  const [history, setHistory] = useState([[]]);
   const [historyIndex, setHistoryIndex] = useState(0);
 
+  // Parcel attribute edit form state (for split parcel attribute editing)
+  const [editFormData, setEditFormData] = useState(null); // { id, parcelCode, owner, landUse, areaSqm, status }
+  const [isEditingParcel, setIsEditingParcel] = useState(false);
+
+  // Split parcel drag state (drag-to-split)
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitParcelId, setSplitParcelId] = useState(null);
+  const [splitStartPoint, setSplitStartPoint] = useState(null); // {lat, lng}
+  const [splitEndPoint, setSplitEndPoint] = useState(null); // {lat, lng}
+
   // Transactions panel state
-  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
-  const [selectedTxnId, setSelectedTxnId] = useState('txn-101');
+  const [transactions, setTransactions] = useState([]);
+  const [selectedTxnId, setSelectedTxnId] = useState('');
   const [txnFilterText, setTxnFilterText] = useState('');
   const [txnFilterStatus, setTxnFilterStatus] = useState('...all...');
   const [currentPage, setCurrentPage] = useState(1);
@@ -405,6 +673,9 @@ export default function RECSPanel() {
 
   // Loaded Transaction Working Data (Screenshot 3: media_1791218407470.png)
   const [loadedTxnData, setLoadedTxnData] = useState(null); // { txnNumber, taskParcel, neighborParcels, visible: true }
+
+  // Transaction documents for View Document validation
+  const [txnDocuments, setTxnDocuments] = useState([]); // [{ id, fileName, documentType, category, ... }]
   
   // Imported Survey Layers (Screenshots 4 & 5: media_1791218484393.png & media_1791218539117.png)
   const [importedSurveyLayers, setImportedSurveyLayers] = useState([]); // [{ id, name, file, color, points, visible }]
@@ -433,30 +704,50 @@ export default function RECSPanel() {
   }, []);
 
   const loadBackendData = async () => {
-    try {
-      const [txRes, prcRes] = await Promise.allSettled([
-        client.get('/transactions'),
-        client.get('/parcels')
-      ]);
+    const [txRes, prcRes] = await Promise.allSettled([
+      client.get('/transactions'),
+      client.get('/parcels', { params: { city: 'Kombolcha' } })
+    ]);
 
-      if (txRes.status === 'fulfilled' && Array.isArray(txRes.value.data) && txRes.value.data.length > 0) {
-        const mappedTxns = txRes.value.data.map((t, idx) => ({
-          no: idx + 1,
-          id: t.id,
-          transactionNumber: t.transaction_number || `AA-LDTTR-${11870 - idx}`,
-          applicationNumber: t.application_number || `appReg${14190 + idx}`,
-          status: t.status || 'CREATED',
-          parcel: t.parcel_code || 'SN001010101021',
-          transactionType: t.application_type || 'Create new parcel',
-          createdBy: t.creator_name || 'hwfdo1',
-          approvedBy: t.assignee_name || 'hwfdo1',
-          creationDate: t.created_at || '2018-04-11T00:00:00',
-          modificationDate: t.updated_at || '2018-04-12T00:00:00'
-        }));
-        setTransactions(mappedTxns);
-      }
-    } catch (err) {
-      console.log('Using initial transactional dataset for RECS environment.');
+    if (txRes.status === 'fulfilled' && Array.isArray(txRes.value.data)) {
+      const mappedTxns = txRes.value.data.map((t, idx) => ({
+        no: idx + 1,
+        id: t.id,
+        transactionNumber: t.transaction_number || t.transactionNumber || `TXN-${idx + 1}`,
+        applicationNumber: t.application_number || t.applicationNumber || '',
+        applicationId: t.application_id || t.application?.id || null,
+        status: t.status || 'CREATED',
+        parcel: t.parcel_code || t.parcelCode || t.parcel?.parcel_code || t.parcel?.parcelCode || 'UNASSIGNED',
+        parcelId: t.parcel_id || t.parcelId || t.parcel?.id || null,
+        transactionType: t.transaction_type || t.transactionType || t.application_type || t.application?.application_type || t.application?.applicationType || 'Create new parcel',
+        createdBy: t.creator_name || t.creator?.full_name || t.creator?.fullName || '',
+        approvedBy: t.assignee_name || t.assigned_user?.full_name || t.assignedUser?.fullName || '',
+        creationDate: t.created_at || t.createdAt || '',
+        modificationDate: t.updated_at || t.updatedAt || ''
+      }));
+      setTransactions(mappedTxns);
+      setSelectedTxnId((currentId) => mappedTxns.some((txn) => txn.id === currentId)
+        ? currentId
+        : mappedTxns[0]?.id || '');
+    } else {
+      setTransactions([]);
+      setSelectedTxnId('');
+      toast.error('Could not load GO transactions');
+    }
+
+    if (prcRes.status === 'fulfilled' && Array.isArray(prcRes.value.data)) {
+      const mappedParcels = prcRes.value.data.map(mapApiParcel);
+      setParcels(mappedParcels);
+      setHistory([mappedParcels]);
+      setHistoryIndex(0);
+      setBorderPoints(borderPointsFromParcels(mappedParcels));
+      setMapAction({ type: 'ZOOM_FULL' });
+    } else {
+      setParcels([]);
+      setHistory([[]]);
+      setHistoryIndex(0);
+      setBorderPoints([]);
+      toast.error('Could not load Kombolcha parcels');
     }
   };
 
@@ -472,8 +763,10 @@ export default function RECSPanel() {
   const handleUndo = () => {
     if (historyIndex > 0) {
       const prev = historyIndex - 1;
+      const previousParcels = history[prev];
       setHistoryIndex(prev);
-      setParcels(history[prev]);
+      setParcels(previousParcels);
+      setBorderPoints(borderPointsFromParcels(previousParcels));
       toast.success('Spatial Edit Undone');
     } else {
       toast('No more actions to undo', { icon: 'ℹ️' });
@@ -483,16 +776,26 @@ export default function RECSPanel() {
   const handleRedo = () => {
     if (historyIndex < history.length - 1) {
       const next = historyIndex + 1;
+      const nextParcels = history[next];
       setHistoryIndex(next);
-      setParcels(history[next]);
+      setParcels(nextParcels);
+      setBorderPoints(borderPointsFromParcels(nextParcels));
       toast.success('Spatial Edit Redone');
     } else {
       toast('No more actions to redo', { icon: 'ℹ️' });
     }
   };
 
-  // Spatial split parcel tool
+  // Spatial split parcel tool — drag from one side of the selected parcel to the other
   const handleSplitParcel = () => {
+    if (splitMode) {
+      setSplitMode(false);
+      setSplitParcelId(null);
+      setSplitStartPoint(null);
+      setSplitEndPoint(null);
+      toast('Split mode cancelled');
+      return;
+    }
     if (!editingEnabled) {
       toast.error('Enable Editing mode first (Pencil Icon)');
       return;
@@ -501,56 +804,101 @@ export default function RECSPanel() {
       toast.error('Please select exactly 1 parcel to split using Select Tool!');
       return;
     }
-
     const target = parcels.find(p => p.id === selectedParcelIds[0]);
-    if (!target) return;
+    if (!target) {
+      toast.error('The selected parcel is no longer available');
+      return;
+    }
+    if ((target.coordinates || []).length < 3) {
+      toast.error('The selected parcel has no polygon to split');
+      return;
+    }
 
-    const baseCode = target.parcelCode;
-    const codeA = `${baseCode}-S1`;
-    const codeB = `${baseCode}-S2`;
+    setSplitParcelId(target.id);
+    setSplitMode(true);
+    setSplitStartPoint(null);
+    setSplitEndPoint(null);
+    toast.success('Split mode: Drag a line across the selected parcel');
+  };
 
-    const p1 = {
-      ...target,
-      id: `${target.id}-S1`,
-      parcelCode: codeA,
-      areaSqm: Number((target.areaSqm / 2).toFixed(2)),
-      coordinates: [
-        target.coordinates[0],
-        target.coordinates[1],
-        [
-          (target.coordinates[1][0] + target.coordinates[2][0]) / 2,
-          (target.coordinates[1][1] + target.coordinates[2][1]) / 2
-        ],
-        [
-          (target.coordinates[0][0] + target.coordinates[3][0]) / 2,
-          (target.coordinates[0][1] + target.coordinates[3][1]) / 2
-        ]
-      ]
+  const handleSplitComplete = async (start, end) => {
+    const target = parcels.find(parcel => parcel.id === splitParcelId);
+    if (!target) {
+      setSplitMode(false);
+      setSplitParcelId(null);
+      toast.error('The selected parcel is no longer available');
+      return;
+    }
+
+    const halves = splitPolygonByLine(target.coordinates, start, end);
+    if (!halves) {
+      setSplitStartPoint(null);
+      setSplitEndPoint(null);
+      toast.error('The split line must cross the parcel boundary twice. Drag across the parcel and try again.');
+      return;
+    }
+
+    const selectedTxn = transactions.find(transaction => transaction.id === selectedTxnId);
+    if (
+      !selectedTxn
+      || loadedTxnData?.transactionId !== selectedTxn.id
+      || loadedTxnData.taskParcel?.id !== target.id
+      || selectedTxn.parcelId !== target.id
+    ) {
+      toast.error('Load the transaction for this parcel before splitting it');
+      return;
+    }
+
+    const [firstCoordinates, secondCoordinates] = halves;
+    const getSplitParcelCode = (suffix) => {
+      const baseCode = `${target.parcelCode}-${suffix}`;
+      let code = baseCode;
+      let suffixNumber = 2;
+      while (parcels.some(parcel => parcel.parcelCode === code)) {
+        code = `${baseCode}-${suffixNumber++}`;
+      }
+      return code;
     };
+    const subParcels = [
+      { coordinates: firstCoordinates, parcelCode: getSplitParcelCode('A') },
+      { coordinates: secondCoordinates, parcelCode: getSplitParcelCode('B') }
+    ].map(parcel => ({
+      parcel_code: parcel.parcelCode,
+      area_sqm: Number(polygonAreaSqm(parcel.coordinates).toFixed(2)),
+      geometry_wkt: latLngsToWkt(parcel.coordinates)
+    }));
 
-    const p2 = {
-      ...target,
-      id: `${target.id}-S2`,
-      parcelCode: codeB,
-      areaSqm: Number((target.areaSqm / 2).toFixed(2)),
-      coordinates: [
-        [
-          (target.coordinates[0][0] + target.coordinates[3][0]) / 2,
-          (target.coordinates[0][1] + target.coordinates[3][1]) / 2
-        ],
-        [
-          (target.coordinates[1][0] + target.coordinates[2][0]) / 2,
-          (target.coordinates[1][1] + target.coordinates[2][1]) / 2
-        ],
-        target.coordinates[2],
-        target.coordinates[3]
-      ]
-    };
+    try {
+      const { data } = await client.post('/spatial/split-parcel', {
+        parcel_id: target.id,
+        transaction_id: selectedTxn.id,
+        sub_parcels: subParcels
+      });
+      const savedSubParcels = (data.sub_parcels || []).map(mapApiParcel);
+      if (savedSubParcels.length !== 2) {
+        throw new Error('The server did not return both saved split parcels');
+      }
 
-    const updated = parcels.filter(p => p.id !== target.id).concat([p1, p2]);
-    pushHistory(updated);
-    setSelectedParcelIds([]);
-    toast.success(`Split feature completed: Created ${codeA} & ${codeB}`);
+      const nextParcels = parcels
+        .filter(parcel => parcel.id !== target.id)
+        .concat(savedSubParcels);
+      pushHistory(nextParcels);
+      setSelectedParcelIds([savedSubParcels[0].id]);
+      setBorderPoints(borderPointsFromParcels(nextParcels));
+      setLoadedTxnData(current => current?.taskParcel?.id === target.id
+        ? { ...current, taskParcel: savedSubParcels[0], splitParcelsSaved: true }
+        : current);
+      setSplitMode(false);
+      setSplitParcelId(null);
+      setSplitStartPoint(null);
+      setSplitEndPoint(null);
+      setIdentifyModalParcel(null);
+      setIsEditingParcel(false);
+      setEditFormData(null);
+      toast.success(`Split saved: ${savedSubParcels[0].parcelCode} and ${savedSubParcels[1].parcelCode}`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'Could not save parcel split');
+    }
   };
 
   // Spatial merge parcels tool
@@ -621,17 +969,188 @@ export default function RECSPanel() {
     toast.success(`Topology check complete: ${errors.filter(e => !e.id.startsWith('clean')).length} errors found.`);
   };
 
+  const isDrawingTool = activeTool === 'draw_polygon' || activeTool === 'draw_line' || activeTool === 'draw_point';
+
+  const activateDrawTool = (tool) => {
+    setActiveTool(tool);
+    setEditingEnabled(true);
+    setSketchPoints([]);
+    if (tool === 'draw_polygon') {
+      toast.success('Draw parcel: click vertices, double-click or right-click to close');
+    } else if (tool === 'draw_line') {
+      toast.success('Draw boundary: click vertices, double-click to finish');
+    } else {
+      toast.success('Draw border point: click the map');
+    }
+  };
+
+  const findTaskParcel = () => {
+    const selectedTxn = transactions.find(t => t.id === selectedTxnId);
+    if (loadedTxnData?.transactionId === selectedTxnId && loadedTxnData.taskParcel) {
+      return parcels.find(p => p.id === loadedTxnData.taskParcel.id) || loadedTxnData.taskParcel;
+    }
+    if (selectedTxn) {
+      const transactionParcel = parcels.find(p => p.id === selectedTxn.parcelId || p.parcelCode === selectedTxn.parcel);
+      if (transactionParcel) return transactionParcel;
+    }
+    if (selectedParcelIds[0]) return parcels.find(p => p.id === selectedParcelIds[0]);
+    return null;
+  };
+
+  const persistParcelGeometry = async (parcel) => {
+    if (!parcel?.id || String(parcel.id).startsWith('prc-') || String(parcel.id).startsWith('mrg-')) {
+      toast.error('This demo parcel is not in the database. Load a first-registration transaction first.');
+      return false;
+    }
+    if (!parcel.coordinates || parcel.coordinates.length < 3) {
+      toast.error('Parcel has no closed polygon to save');
+      return false;
+    }
+    const wkt = latLngsToWkt(parcel.coordinates);
+    await client.put(`/parcels/${parcel.id}`, {
+      geometry_wkt: wkt,
+      area_sqm: Number(parcel.areaSqm || polygonAreaSqm(parcel.coordinates)).toFixed(2)
+    });
+    return true;
+  };
+
+  const applyPolygonToTask = (coords) => {
+    const area = Number(polygonAreaSqm(coords).toFixed(2));
+    const target = findTaskParcel();
+    if (!target) {
+      toast.error('Load the first-registration transaction (or select its parcel) before drawing');
+      return;
+    }
+    const updatedParcel = { ...target, coordinates: coords, areaSqm: area || target.areaSqm };
+    const others = parcels.filter(p => p.id !== target.id);
+    const next = [...others, updatedParcel];
+    pushHistory(next);
+    setSelectedParcelIds([target.id]);
+    setBorderPoints(borderPointsFromParcels(next));
+    setIdentifyModalParcel(updatedParcel);
+    if (loadedTxnData) {
+      setLoadedTxnData({ ...loadedTxnData, taskParcel: updatedParcel });
+    }
+    setSketchPoints([]);
+    toast.success(`Parcel ${target.parcelCode} boundary captured (${area} m²). Save to store it.`);
+  };
+
+  const handleAddVertex = (point) => {
+    setSketchPoints(prev => {
+      const last = prev[prev.length - 1];
+      if (last && L.latLng(last.lat, last.lng).distanceTo(L.latLng(point.lat, point.lng)) < 0.5) {
+        return prev;
+      }
+      return [...prev, point];
+    });
+  };
+
+  const handleFinishShape = () => {
+    if (activeTool === 'draw_polygon') {
+      if (sketchPoints.length < 3) {
+        toast.error('Need at least 3 vertices to close a parcel polygon');
+        return;
+      }
+      applyPolygonToTask(sketchPoints.map(p => [p.lat, p.lng]));
+      return;
+    }
+    if (activeTool === 'draw_line') {
+      if (sketchPoints.length < 2) {
+        toast.error('Need at least 2 points for a boundary line');
+        return;
+      }
+      const target = findTaskParcel();
+      if (!target) {
+        toast.error('Load a transaction parcel before drawing a boundary line');
+        setSketchPoints([]);
+        return;
+      }
+      const lengthM = sketchPoints.slice(1).reduce((sum, pt, idx) => {
+        const prev = sketchPoints[idx];
+        return sum + L.latLng(prev.lat, prev.lng).distanceTo(L.latLng(pt.lat, pt.lng));
+      }, 0);
+      client.post('/boundary-lines', {
+        parcel_id: target.id,
+        line_number: `L${Date.now().toString().slice(-4)}`,
+        length_m: Number(lengthM.toFixed(2))
+      }).then(() => toast.success('Boundary line saved')).catch((err) => {
+        toast.error(err.response?.data?.message || 'Could not save boundary line');
+      });
+      setSketchPoints([]);
+    }
+  };
+
+  const handleDrawPoint = (point) => {
+    const target = findTaskParcel();
+    if (!target) {
+      toast.error('Load a transaction parcel before adding a border point');
+      return;
+    }
+    const newPoint = {
+      id: `${target.id}-bp-${Date.now()}`,
+      name: `${target.parcelCode}-P${borderPoints.length + 1}`,
+      coords: [point.lat, point.lng]
+    };
+    setBorderPoints(prev => [...prev, newPoint]);
+    client.post('/border-points', {
+      parcel_id: target.id,
+      point_number: newPoint.name,
+      geometry_wkt: `POINT(${point.lng} ${point.lat})`
+    }).then(() => toast.success(`Border point ${newPoint.name} saved`)).catch((err) => {
+      toast.error(err.response?.data?.message || 'Could not save border point');
+    });
+  };
+
   // Handle parcel click on map canvas
   const handleParcelClick = (parcel) => {
-    if (activeTool === 'identify') {
-      setIdentifyModalParcel(parcel);
-    } else if (activeTool === 'select') {
+    if (isDrawingTool || splitMode) return;
+    // Always open editable attribute dialog when clicking any parcel (including split halves)
+    setIdentifyModalParcel(parcel);
+    setEditFormData({
+      id: parcel.id,
+      parcelCode: parcel.parcelCode,
+      owner: parcel.owner,
+      landUse: parcel.landUse,
+      areaSqm: parcel.areaSqm,
+      status: parcel.status
+    });
+    setIsEditingParcel(true);
+    if (activeTool === 'select') {
       if (selectedParcelIds.includes(parcel.id)) {
         setSelectedParcelIds(selectedParcelIds.filter(id => id !== parcel.id));
       } else {
         setSelectedParcelIds([...selectedParcelIds, parcel.id]);
       }
     }
+  };
+
+  // Save edited parcel attributes
+  const handleSaveParcelAttributes = () => {
+    if (!editFormData) return;
+    setParcels(prev => prev.map(p => {
+      if (p.id === editFormData.id) {
+        return {
+          ...p,
+          parcelCode: editFormData.parcelCode,
+          owner: editFormData.owner,
+          landUse: editFormData.landUse,
+          areaSqm: Number(editFormData.areaSqm) || p.areaSqm,
+          status: editFormData.status
+        };
+      }
+      return p;
+    }));
+    setIsEditingParcel(false);
+    setEditFormData(null);
+    setIdentifyModalParcel(null);
+    toast.success(`Parcel attributes updated successfully`);
+  };
+
+  // Cancel editing parcel attributes
+  const handleCancelParcelEdit = () => {
+    setIsEditingParcel(false);
+    setEditFormData(null);
+    setIdentifyModalParcel(null);
   };
 
   // Filtered transactions
@@ -655,11 +1174,14 @@ export default function RECSPanel() {
   // --- 3.3.1 Initiating a Transaction in RECS ---
   const executeInitiateTransaction = async (txn) => {
     try {
-      await client.post(`/transactions/${txn.id}/initiate`);
-    } catch (e) {}
-    
-    // Update local status to INITIATED / INPROCESS
-    setTransactions(prev => prev.map(t => t.id === txn.id ? { ...t, status: 'INITIATED' } : t));
+      const response = await client.post(`/transactions/${txn.id}/initiate`);
+      setTransactions(prev => prev.map(t => t.id === txn.id
+        ? { ...t, status: response.data?.status || 'INITIATED' }
+        : t));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not initiate transaction');
+      return;
+    }
     
     // Display confirmation dialog matching manual: "If the transaction Initiated successfully, the system will display confirmation message and click OK"
     setInitiateConfirmDialog({
@@ -670,23 +1192,65 @@ export default function RECSPanel() {
   };
 
   // --- 3.3.2 Loading a Transaction in RECS ---
-  const executeLoadTransaction = (txn) => {
-    // Locate target parcel and neighbors
-    const targetParcel = parcels.find(p => p.parcelCode === txn.parcel) || parcels[0];
-    const neighbors = parcels.filter(p => p.id !== targetParcel.id).slice(0, 3);
+  const executeLoadTransaction = async (txn) => {
+    if (txn.status === 'CREATED') {
+      toast.error('Initiate this transaction before loading it');
+      setTxnContextMenu(null);
+      return;
+    }
 
-    setLoadedTxnData({
-      txnNumber: txn.transactionNumber,
-      taskParcel: targetParcel,
-      neighborParcels: neighbors,
-      visible: true
-    });
+    if (!['INITIATED', 'IN_PROCESS'].includes(txn.status)) {
+      toast.error(`Cannot load transaction in ${txn.status} status`);
+      setTxnContextMenu(null);
+      return;
+    }
 
-    // Zoom directly to target parcel group
-    setMapAction({ type: 'ZOOM_TO_PARCEL', coords: targetParcel.coordinates });
-    setSelectedParcelIds([targetParcel.id]);
+    try {
+      const { data: transactionDetails } = await client.get(`/transactions/${txn.id}`);
+      if (txn.status === 'INITIATED') {
+        const response = await client.post(`/transactions/${txn.id}/load`);
+        const status = response.data?.status || 'IN_PROCESS';
+        setTransactions(prev => prev.map(t => t.id === txn.id ? { ...t, status } : t));
+      }
 
-    toast.success(`Transaction layer ${txn.transactionNumber} loaded into workspace (Task & Neighbors)`);
+      const splitParcel = transactionDetails.split_parcels?.[0];
+      const targetParcel = splitParcel
+        ? mapApiParcel((await client.get(`/parcels/${splitParcel.parcel_id}`)).data)
+        : parcels.find(p => p.id === txn.parcelId || p.parcelCode === txn.parcel);
+      if (!targetParcel) {
+        toast.error(`Parcel ${txn.parcel || txn.parcelId || ''} is not available in Kombolcha parcel data. Refresh parcels and try again.`);
+        setTxnContextMenu(null);
+        return;
+      }
+
+      const neighbors = parcels
+        .filter(p => p.id !== targetParcel.id && (p.coordinates || []).length >= 3)
+        .slice(0, 3);
+      setSelectedTxnId(txn.id);
+      setLoadedTxnData({
+        transactionId: txn.id,
+        txnNumber: txn.transactionNumber,
+        taskParcel: targetParcel,
+        neighborParcels: neighbors,
+        splitParcelsSaved: Boolean(transactionDetails.split_parcels?.length),
+        visible: true
+      });
+
+      setSelectedParcelIds([targetParcel.id]);
+      if ((targetParcel.coordinates || []).length >= 3) {
+        setMapAction({ type: 'ZOOM_TO_PARCEL', coords: targetParcel.coordinates });
+        toast.success(`Transaction ${txn.transactionNumber} loaded (${targetParcel.parcelCode})`);
+      } else {
+        setMapAction({ type: 'ZOOM_FULL' });
+        setEditingEnabled(true);
+        setActiveTool('draw_polygon');
+        toast.success(`New registration parcel ${targetParcel.parcelCode} has no map yet. Draw the polygon, then Save.`);
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not load transaction');
+      setTxnContextMenu(null);
+      return;
+    }
     setTxnContextMenu(null);
   };
 
@@ -713,14 +1277,42 @@ export default function RECSPanel() {
       executeLoadTransaction(selectedTxn);
     } else if (actionType === 'REMOVE') {
       executeRemoveTransactionLayer();
-    } else if (actionType === 'SAVE') {
-      toast.success(`Transaction Layer for ${selectedTxn.transactionNumber} saved to database`);
-    } else if (actionType === 'FINISH') {
+    } else if (actionType === 'SAVE' || actionType === 'FINISH') {
+      if (actionType === 'FINISH' && selectedTxn.status !== 'IN_PROCESS') {
+        toast.error('Initiate and load this transaction before finishing it');
+        return;
+      }
+      if (actionType === 'FINISH' && loadedTxnData?.transactionId !== selectedTxn.id) {
+        toast.error('Load this transaction before finishing it');
+        return;
+      }
+      const target = findTaskParcel();
       try {
-        await client.post(`/transactions/${selectedTxn.id}/finish`);
-      } catch (e) {}
-      setTransactions(transactions.map(t => t.id === selectedTxn.id ? { ...t, status: 'FINISHED' } : t));
-      toast.success(`Transaction ${selectedTxn.transactionNumber} saved and finished`);
+        const splitAlreadySaved = Boolean(
+          actionType === 'FINISH'
+          && loadedTxnData?.transactionId === selectedTxn.id
+          && loadedTxnData.splitParcelsSaved
+        );
+        if (actionType === 'SAVE' || !splitAlreadySaved) {
+          if (!target) {
+            toast.error('Select and load a transaction parcel before saving');
+            return;
+          }
+          const saved = await persistParcelGeometry(target);
+          if (!saved) return;
+        }
+        if (actionType === 'FINISH') {
+          const response = await client.post(`/transactions/${selectedTxn.id}/finish`);
+          const status = response.data?.status || 'READY_FOR_APPROVAL';
+          setTransactions(prev => prev.map(t => t.id === selectedTxn.id ? { ...t, status } : t));
+          toast.success(`Transaction ${selectedTxn.transactionNumber} finished`);
+        } else {
+          toast.success(`Parcel ${target.parcelCode} geometry saved`);
+        }
+      } catch (err) {
+        console.error(`Transaction ${actionType.toLowerCase()} error:`, err);
+        toast.error(err.response?.data?.message || `Could not ${actionType.toLowerCase()} transaction`);
+      }
     } else if (actionType === 'ACCEPT') {
       try {
         await client.post(`/transactions/${selectedTxn.id}/approve`);
@@ -754,6 +1346,32 @@ export default function RECSPanel() {
       y: e.clientY,
       txn
     });
+  };
+
+  // Fetch documents attached to a transaction (via its application)
+  const loadTxnDocuments = async (applicationId) => {
+    if (!applicationId) {
+      setTxnDocuments([]);
+      toast.error('No application linked to this transaction');
+      return [];
+    }
+    try {
+      const { data } = await client.get(`/documents/application/${applicationId}`);
+      const docs = Array.isArray(data) ? data : [];
+      setTxnDocuments(docs);
+      return docs;
+    } catch (err) {
+      console.error('Load transaction documents error:', err);
+      setTxnDocuments([]);
+      toast.error('Failed to load documents for this transaction');
+      return [];
+    }
+  };
+
+  // Open document preview in a new tab
+  const openDocumentView = (docId) => {
+    const token = localStorage.getItem('crprs_token');
+    window.open(`/api/documents/${docId}/preview?token=${token}`, '_blank');
   };
 
   // Import Survey Layer handler (Section 3.3.4)
@@ -917,7 +1535,7 @@ export default function RECSPanel() {
         {visibleToolbars.taskToolbar && (
           <div className="flex items-center border-r border-slate-300 pr-1.5 mr-0.5">
             <button 
-              onClick={() => toast.success('Cadastre task state saved to database')} 
+              onClick={() => handleTxnAction('SAVE')}
               className="p-1 hover:bg-slate-200 active:bg-slate-300 rounded border border-transparent hover:border-slate-300"
               title="Save task"
             >
@@ -930,7 +1548,15 @@ export default function RECSPanel() {
         {visibleToolbars.digitizing && (
           <div className="flex items-center gap-0.5 border-r border-slate-300 pr-1.5 mr-0.5">
             <button 
-              onClick={() => setEditingEnabled(!editingEnabled)} 
+              onClick={() => {
+                if (editingEnabled && splitMode) {
+                  setSplitMode(false);
+                  setSplitParcelId(null);
+                  setSplitStartPoint(null);
+                  setSplitEndPoint(null);
+                }
+                setEditingEnabled(!editingEnabled);
+              }}
               className={`p-1 rounded border ${editingEnabled ? 'bg-amber-100 border-amber-400 text-amber-800' : 'hover:bg-slate-200 border-transparent hover:border-slate-300'}`}
               title="Toggle Editing"
             >
@@ -942,7 +1568,7 @@ export default function RECSPanel() {
             <button onClick={handleRedo} className="p-1 hover:bg-slate-200 rounded border border-transparent hover:border-slate-300" title="Redo Edit">
               <Redo2 className="w-4 h-4 text-slate-600" />
             </button>
-            <button onClick={handleSplitParcel} className="p-1 hover:bg-slate-200 rounded border border-transparent hover:border-slate-300 text-amber-700" title="Split features">
+            <button onClick={handleSplitParcel} className={`p-1 rounded border text-amber-700 ${splitMode ? 'bg-amber-100 border-amber-400' : 'hover:bg-slate-200 border-transparent hover:border-slate-300'}`} title={splitMode ? 'Cancel parcel split' : 'Split features'}>
               <Scissors className="w-4 h-4" />
             </button>
             <button onClick={handleMergeParcels} className="p-1 hover:bg-slate-200 rounded border border-transparent hover:border-slate-300 text-emerald-700" title="Merge features">
@@ -1030,14 +1656,15 @@ export default function RECSPanel() {
             <span className="font-extrabold text-[11px]">V+</span>
             <span className="text-[10px]">Add Vector Layer</span>
           </button>
-          <button onClick={() => setActiveTool('draw_point')} className={`p-1 rounded border ${activeTool === 'draw_point' ? 'bg-red-100 border-red-400' : 'hover:bg-slate-200 border-transparent'}`} title="Draw border point"><MapPin className="w-4 h-4 text-red-600" /></button>
-          <button onClick={() => setActiveTool('draw_line')} className={`p-1 rounded border ${activeTool === 'draw_line' ? 'bg-blue-100 border-blue-400' : 'hover:bg-slate-200 border-transparent'}`} title="Draw boundary line"><GitCommit className="w-4 h-4 text-slate-700" /></button>
-          <button onClick={() => setActiveTool('draw_polygon')} className={`p-1 rounded border ${activeTool === 'draw_polygon' ? 'bg-emerald-100 border-emerald-400' : 'hover:bg-slate-200 border-transparent'}`} title="Draw polygon"><Pentagon className="w-4 h-4 text-emerald-700" /></button>
+          <button onClick={() => activateDrawTool('draw_point')} className={`p-1 rounded border ${activeTool === 'draw_point' ? 'bg-red-100 border-red-400' : 'hover:bg-slate-200 border-transparent'}`} title="Draw border point"><MapPin className="w-4 h-4 text-red-600" /></button>
+          <button onClick={() => activateDrawTool('draw_line')} className={`p-1 rounded border ${activeTool === 'draw_line' ? 'bg-blue-100 border-blue-400' : 'hover:bg-slate-200 border-transparent'}`} title="Draw boundary line"><GitCommit className="w-4 h-4 text-slate-700" /></button>
+          <button onClick={() => activateDrawTool('draw_polygon')} className={`p-1 rounded border ${activeTool === 'draw_polygon' ? 'bg-emerald-100 border-emerald-400' : 'hover:bg-slate-200 border-transparent'}`} title="Draw polygon"><Pentagon className="w-4 h-4 text-emerald-700" /></button>
+          <button onClick={() => window.print()} className="p-1 rounded border border-transparent hover:border-slate-300 hover:bg-slate-200 text-slate-700" title="Print Map"><Printer className="w-4 h-4" /></button>
         </div>
       </div>
 
       {/* 4. MAIN CENTRAL GIS WORKSPACE */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="gis-print-workspace flex-1 flex overflow-hidden relative">
 
         {/* --- LEFT DOCK: Layers Panel & Layer Order Panel --- */}
         {(visiblePanels.layersPanel || visiblePanels.layerOrderPanel) && (
@@ -1284,10 +1911,22 @@ export default function RECSPanel() {
         )}
 
         {/* --- CENTER MAP CANVAS & TRANSACTIONS DOCK --- */}
-        <div className="flex-1 flex flex-col relative overflow-hidden bg-[#e0e5eb]">
+        <div className="gis-print-map-column flex-1 flex flex-col relative overflow-hidden bg-[#e0e5eb]">
           
           {/* Cadastral Map View */}
-          <div className="flex-1 relative z-0">
+          <div className="gis-print-map flex-1 relative z-0">
+            {splitMode && (
+              <div className="absolute left-1/2 top-3 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded border border-amber-400 bg-white/95 px-3 py-2 text-xs font-medium text-amber-900 shadow">
+                <span>Drag across the selected parcel to draw the split line.</span>
+                <button
+                  type="button"
+                  onClick={handleSplitParcel}
+                  className="text-slate-600 underline hover:text-red-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             <MapContainer 
               center={[BASE_LAT + 0.0015, BASE_LNG + 0.0018]} 
               zoom={17} 
@@ -1304,6 +1943,20 @@ export default function RECSPanel() {
               />
 
               <MapActionController mapAction={mapAction} onActionExecuted={() => setMapAction(null)} />
+              <MapDrawHandler
+                activeTool={activeTool}
+                editingEnabled={editingEnabled}
+                splitMode={splitMode}
+                onAddVertex={handleAddVertex}
+                onFinishShape={handleFinishShape}
+                onDrawPoint={handleDrawPoint}
+                onSplitDragStart={(point) => {
+                  setSplitStartPoint(point);
+                  setSplitEndPoint(point);
+                }}
+                onSplitDragMove={setSplitEndPoint}
+                onSplitComplete={handleSplitComplete}
+              />
 
               {layersVisibility.baseMap && (
                 <TileLayer 
@@ -1329,6 +1982,7 @@ export default function RECSPanel() {
 
               {/* Standard Parcels */}
               {layersVisibility.parcel && parcels.map(parcel => {
+                if ((parcel.coordinates || []).length < 3) return null;
                 const isSelected = selectedParcelIds.includes(parcel.id);
                 // Check if part of loaded transaction
                 const isTaskParcel = loadedTxnData?.visible && loadedTxnData.taskParcel?.id === parcel.id;
@@ -1381,6 +2035,47 @@ export default function RECSPanel() {
                 );
               })}
 
+              {splitMode && splitStartPoint && splitEndPoint && (
+                <>
+                  <Polyline
+                    positions={[
+                      [splitStartPoint.lat, splitStartPoint.lng],
+                      [splitEndPoint.lat, splitEndPoint.lng]
+                    ]}
+                    pathOptions={{ color: '#dc2626', weight: 3, dashArray: '8, 5' }}
+                  />
+                  <CircleMarker
+                    center={[splitStartPoint.lat, splitStartPoint.lng]}
+                    radius={5}
+                    pathOptions={{ color: '#ffffff', fillColor: '#dc2626', fillOpacity: 1, weight: 2 }}
+                  />
+                  <CircleMarker
+                    center={[splitEndPoint.lat, splitEndPoint.lng]}
+                    radius={5}
+                    pathOptions={{ color: '#ffffff', fillColor: '#dc2626', fillOpacity: 1, weight: 2 }}
+                  />
+                </>
+              )}
+
+              {isDrawingTool && sketchPoints.length > 0 && (
+                <>
+                  {sketchPoints.length > 1 && (
+                    <Polyline
+                      positions={sketchPoints.map(point => [point.lat, point.lng])}
+                      pathOptions={{ color: '#dc2626', weight: 3, dashArray: '6, 4' }}
+                    />
+                  )}
+                  {sketchPoints.map((point, idx) => (
+                    <CircleMarker
+                      key={`sketch-${idx}`}
+                      center={[point.lat, point.lng]}
+                      radius={5}
+                      pathOptions={{ color: '#ffffff', fillColor: '#dc2626', fillOpacity: 1, weight: 2 }}
+                    />
+                  ))}
+                </>
+              )}
+
               {/* Imported Survey Points (Screenshot 5: media_1791218539117.png) */}
               {importedSurveyLayers.map(sLayer => sLayer.visible && sLayer.points.map(pt => (
                 <CircleMarker
@@ -1421,7 +2116,7 @@ export default function RECSPanel() {
               ))}
 
               {/* Boundary Lines */}
-              {layersVisibility.boundaryline && parcels.map(parcel => (
+              {layersVisibility.boundaryline && parcels.filter(parcel => (parcel.coordinates || []).length >= 3).map(parcel => (
                 <Polyline 
                   key={`line-${parcel.id}`}
                   positions={[...parcel.coordinates, parcel.coordinates[0]]}
@@ -1693,6 +2388,21 @@ export default function RECSPanel() {
           </div>
 
           <div 
+            onClick={async () => { 
+              const docs = await loadTxnDocuments(txnContextMenu.txn.applicationId);
+              if (docs.length > 0) {
+                openDocumentView(docs[0].id);
+              } else if (txnContextMenu.txn.applicationId) {
+                toast.info('No documents attached to this transaction yet');
+              }
+            }}
+            className="px-3 py-1.5 hover:bg-[#3399ff] hover:text-white flex items-center gap-2 cursor-pointer"
+          >
+            <Eye className="w-3.5 h-3.5 text-blue-600" />
+            <span>View Document</span>
+          </div>
+
+          <div 
             onClick={() => executeRemoveTransactionLayer()}
             className="px-3 py-1.5 hover:bg-[#3399ff] hover:text-white flex items-center gap-2 cursor-pointer"
           >
@@ -1869,29 +2579,50 @@ export default function RECSPanel() {
         <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border-2 border-[#1e3a5f] rounded-xs shadow-2xl w-96 text-xs text-slate-800">
             <div className="bg-[#1b365d] text-white px-3 py-1.5 flex items-center justify-between font-semibold">
-              <span className="flex items-center gap-1.5"><Info className="w-4 h-4 text-blue-300" /> Parcel Attributes</span>
-              <button onClick={() => setIdentifyModalParcel(null)} className="text-white hover:text-red-400">✕</button>
+              <span className="flex items-center gap-1.5"><Info className="w-4 h-4 text-blue-300" /> {isEditingParcel ? 'Edit Parcel Attributes' : 'Parcel Attributes'}</span>
+              <button onClick={() => { setIdentifyModalParcel(null); setIsEditingParcel(false); setEditFormData(null); }} className="text-white hover:text-red-400">✕</button>
             </div>
-            <div className="p-4 space-y-2">
-              <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Parcel Code:</span> <span className="font-mono font-bold text-blue-800">{identifyModalParcel.parcelCode}</span></div>
-              <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Registered Holder:</span> <span className="font-medium">{identifyModalParcel.owner}</span></div>
-              <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Land Use Category:</span> <span>{identifyModalParcel.landUse}</span></div>
-              <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Cadastral Area:</span> <span className="font-semibold">{identifyModalParcel.areaSqm} m²</span></div>
-              <div className="flex justify-between border-b pb-1"><span className="text-slate-500">CRS:</span> <span className="font-mono">EPSG:20137 (UTM 37N)</span></div>
-              <div className="flex justify-between pb-1"><span className="text-slate-500">Status:</span> <span className="text-emerald-700 font-bold">{identifyModalParcel.status}</span></div>
+            <div className="p-4 space-y-3">
+              {isEditingParcel && editFormData ? (
+                <>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Parcel Code:</span><input type="text" value={editFormData.parcelCode} onChange={e => setEditFormData({...editFormData, parcelCode: e.target.value})} className="w-full p-1 border border-slate-300 rounded bg-white text-xs font-mono text-blue-900 font-semibold focus:outline-none focus:border-blue-500" /></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Registered Holder:</span><input type="text" value={editFormData.owner} onChange={e => setEditFormData({...editFormData, owner: e.target.value})} className="w-full p-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500" /></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Land Use Category:</span><input type="text" value={editFormData.landUse} onChange={e => setEditFormData({...editFormData, landUse: e.target.value})} className="w-full p-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500" /></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Cadastral Area (m²):</span><input type="number" value={editFormData.areaSqm} onChange={e => setEditFormData({...editFormData, areaSqm: e.target.value})} className="w-full p-1 border border-slate-300 rounded bg-white text-xs font-semibold focus:outline-none focus:border-blue-500" /></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Status:</span><select value={editFormData.status} onChange={e => setEditFormData({...editFormData, status: e.target.value})} className="w-full p-1 border border-slate-300 rounded bg-white text-xs focus:outline-none focus:border-blue-500"><option value="ACTIVE">Active</option><option value="PENDING">Pending</option><option value="CLOSED">Closed</option><option value="DISPUTED">Disputed</option></select></div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Parcel Code:</span> <span className="font-mono font-bold text-blue-800">{identifyModalParcel.parcelCode}</span></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Registered Holder:</span> <span className="font-medium">{identifyModalParcel.owner}</span></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Land Use Category:</span> <span>{identifyModalParcel.landUse}</span></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Cadastral Area:</span> <span className="font-semibold">{identifyModalParcel.areaSqm} m²</span></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">CRS:</span> <span className="font-mono">EPSG:20137 (UTM 37N)</span></div>
+                  <div className="flex justify-between border-b pb-1"><span className="text-slate-500">Status:</span> <span className="text-emerald-700 font-bold">{identifyModalParcel.status}</span></div>
+                </>
+              )}
             </div>
             <div className="bg-[#f0f0f0] border-t px-3 py-2 flex justify-end gap-2">
-              <button 
-                onClick={() => {
-                  setSelectedParcelIds([identifyModalParcel.id]);
-                  setIdentifyModalParcel(null);
-                  toast.success(`Parcel ${identifyModalParcel.parcelCode} selected for spatial operations`);
-                }}
-                className="bg-[#0078d7] text-white px-3 py-1 rounded hover:bg-[#0063b1]"
-              >
-                Select for Edit
-              </button>
-              <button onClick={() => setIdentifyModalParcel(null)} className="bg-slate-200 px-3 py-1 rounded hover:bg-slate-300">Close</button>
+              {isEditingParcel ? (
+                <>
+                  <button onClick={handleCancelParcelEdit} className="bg-slate-200 px-3 py-1 rounded hover:bg-slate-300 text-xs">Cancel</button>
+                  <button onClick={handleSaveParcelAttributes} className="bg-[#0078d7] text-white px-3 py-1 rounded hover:bg-[#0063b1] text-xs">Save Changes</button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      setSelectedParcelIds([identifyModalParcel.id]);
+                      setIdentifyModalParcel(null);
+                      toast.success(`Parcel ${identifyModalParcel.parcelCode} selected for spatial operations`);
+                    }}
+                    className="bg-[#0078d7] text-white px-3 py-1 rounded hover:bg-[#0063b1] text-xs"
+                  >
+                    Select for Edit
+                  </button>
+                  <button onClick={() => setIdentifyModalParcel(null)} className="bg-slate-200 px-3 py-1 rounded hover:bg-slate-300 text-xs">Close</button>
+                </>
+              )}
             </div>
           </div>
         </div>

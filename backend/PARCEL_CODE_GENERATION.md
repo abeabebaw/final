@@ -2,6 +2,7 @@
 
 ## Overview
 The system automatically generates unique parcel codes for all new parcels created during First Registration applications. No manual input is required.
+New parcels are always registered in Amhara Region, Kombolcha City; these values are fixed by the application and are not selected per request.
 
 ## Parcel Code Format
 
@@ -20,15 +21,9 @@ PRC-[REGION]-[CITY]-YYYYMM-NNNNN
 
 ## Examples
 
-### With Region and City
-- Region: "Addis Ababa", City: "Bole"
-  - Code: `PRC-ADBO-202608-00001`
-  
-- Region: "Oromia", City: "Adama"
-  - Code: `PRC-ORAD-202608-00001`
-  
-- Region: "Amhara", City: "Bahir Dar"
-  - Code: `PRC-AMBA-202608-00001`
+### Kombolcha City
+- Region: "Amhara", City: "Kombolcha"
+  - Code: `PRC-AMKO-202608-00001`
 
 ### Without Region/City (Fallback)
 - No region/city provided
@@ -43,7 +38,7 @@ PRC-[REGION]-[CITY]-YYYYMM-NNNNN
 
 ### 2. Regional Prefixing
 - **If region provided**: Uses first 2 letters (e.g., "Addis Ababa" → "AD")
-- **If city provided**: Uses first 2 letters (e.g., "Bole" → "BO")
+- **City scope**: Kombolcha City is fixed; its first 2 letters are used ("Kombolcha" → "KO")
 - **Combined**: Region + City codes (e.g., "ADBO")
 - **If missing**: Uses base "PRC" prefix only
 
@@ -191,32 +186,31 @@ console.log('Created parcel with code:', newParcel.parcelCode);
 ### Test Case 1: Standard Generation
 ```javascript
 Input:
-- Region: "Addis Ababa"
-- City: "Bole"
+- Region: "Amhara"
+- City: "Kombolcha"
 - Area: 500 sqm
 
 Expected Output:
-- Parcel Code: PRC-ADBO-202608-00001
+- Parcel Code: PRC-AMKO-202608-00001
 ```
 
 ### Test Case 2: Multiple Parcels Same Day
 ```javascript
-First Parcel:  PRC-ADBO-202608-00001
-Second Parcel: PRC-ADBO-202608-00002
-Third Parcel:  PRC-ADBO-202608-00003
+First Parcel:  PRC-AMKO-202608-00001
+Second Parcel: PRC-AMKO-202608-00002
+Third Parcel:  PRC-AMKO-202608-00003
 ```
 
-### Test Case 3: Different Regions
+### Test Case 3: City-Scoped Parcel Codes
 ```javascript
-Addis Ababa, Bole:  PRC-ADBO-202608-00001
-Oromia, Adama:      PRC-ORAD-202608-00001
-Amhara, Bahir Dar:  PRC-AMBA-202608-00001
+Amhara, Kombolcha:  PRC-AMKO-202608-00001
+Amhara, Kombolcha:  PRC-AMKO-202608-00002
 ```
 
 ### Test Case 4: Year Rollover
 ```javascript
-December 2026: PRC-ADBO-202612-00999
-January 2027:  PRC-ADBO-202701-00001  // Sequence resets
+December 2026: PRC-AMKO-202612-00999
+January 2027:  PRC-AMKO-202701-00001  // Sequence resets
 ```
 
 ## Troubleshooting

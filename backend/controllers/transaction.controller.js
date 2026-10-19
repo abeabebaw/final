@@ -96,7 +96,8 @@ exports.getById = async (req, res, next) => {
     const txnResult = await db.query(
       `
       SELECT t.*, a.application_number, a.application_type, a.applicant_name,
-             p.parcel_code, p.area_sqm, p.land_use, p.region, p.city,
+             p.parcel_code, p.area_sqm, p.land_use, p.region, p.city, p.sub_city, p.woreda,
+             p.geometry_wkt, p.is_registered,
              u.full_name as assignee_name
       FROM transactions t
       JOIN applications a ON t.application_id = a.id
@@ -111,6 +112,14 @@ exports.getById = async (req, res, next) => {
     }
 
     const txn = txnResult.rows[0];
+    txn.split_parcels = (await db.query(
+      `SELECT id AS parcel_id, parcel_code, area_sqm, land_use, region, city,
+              sub_city, woreda, geometry_wkt, is_registered
+       FROM parcels
+       WHERE split_transaction_id=$1
+       ORDER BY parcel_code`,
+      [id]
+    )).rows;
     txn.history = (await db.query('SELECT * FROM transaction_history WHERE transaction_id=$1 ORDER BY created_at', [id])).rows;
     txn.documents = (await db.query(
       `SELECT d.*, u.full_name as uploader_name, u.role as uploader_role
@@ -122,6 +131,14 @@ exports.getById = async (req, res, next) => {
     )).rows;
 
     if (txn.parcel_id) {
+      txn.border_points = (await db.query(
+        'SELECT id, point_number, ST_AsText(geometry) AS geometry_wkt, created_at FROM border_points WHERE parcel_id=$1 ORDER BY created_at ASC',
+        [txn.parcel_id]
+      )).rows;
+      txn.boundary_lines = (await db.query(
+        'SELECT id, line_number, length_m, ST_AsText(geometry) AS geometry_wkt, created_at FROM boundary_lines WHERE parcel_id=$1 ORDER BY created_at ASC',
+        [txn.parcel_id]
+      )).rows;
       txn.rights = (await db.query('SELECT r.*, p.first_name, p.father_name, p.grandfather_name, p.organization_name FROM rights r LEFT JOIN parties p ON r.holder_party_id = p.id WHERE r.parcel_id=$1', [txn.parcel_id])).rows;
       txn.mortgages = (await db.query('SELECT * FROM mortgages WHERE parcel_id=$1', [txn.parcel_id])).rows;
       txn.injunctions = (await db.query('SELECT * FROM court_injunctions WHERE parcel_id=$1', [txn.parcel_id])).rows;
@@ -484,7 +501,16 @@ exports.approve = async (req, res, next) => {
       [id, txn.rows[0].status, req.user.id]
     );
 
-    if (txn.rows[0].parcel_id) {
+    const splitParcels = await db.query(
+      'SELECT id FROM parcels WHERE split_transaction_id=$1',
+      [id]
+    );
+    if (splitParcels.rows.length > 0) {
+      await db.query(
+        'UPDATE parcels SET is_registered=TRUE, registration_date=CURRENT_TIMESTAMP WHERE split_transaction_id=$1',
+        [id]
+      );
+    } else if (txn.rows[0].parcel_id) {
       await db.query('UPDATE parcels SET is_registered=TRUE, registration_date=CURRENT_TIMESTAMP WHERE id=$1', [txn.rows[0].parcel_id]);
     }
 
