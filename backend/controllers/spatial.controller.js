@@ -192,6 +192,7 @@ exports.getParcelsGeoJson = async (req, res, next) => {
         ) AS geojson
         FROM parcels p
         WHERE p.city ILIKE '%Kombolcha%'
+          AND p.merged_into_parcel_id IS NULL
           AND NOT EXISTS (
             SELECT 1 FROM parcels child WHERE child.parent_parcel_id=p.id
           )
@@ -208,7 +209,8 @@ exports.getParcelsGeoJson = async (req, res, next) => {
     const parcels = await prisma.parcel.findMany({
       where: {
         city: { contains: 'Kombolcha', mode: 'insensitive' },
-        splitChildren: { none: {} }
+        splitChildren: { none: {} },
+        mergedIntoParcelId: null
       },
       orderBy: { createdAt: 'desc' },
       take: 200
@@ -383,18 +385,79 @@ exports.splitParcel = async (req, res, next) => {
 // Parcel Merge
 exports.mergeParcels = async (req, res, next) => {
   try {
-    const { parcel_ids, merged_parcel_code, land_use } = req.body;
+    const {
+      parcel_ids,
+      parcel_codes,
+      merged_parcel_code,
+      land_use,
+      geometry_wkt,
+      transaction_id
+    } = req.body;
 
     if (!parcel_ids || !Array.isArray(parcel_ids) || parcel_ids.length < 2) {
       throw new ValidationError('At least 2 parcel IDs are required for a parcel merge');
     }
+    if (new Set(parcel_ids).size !== parcel_ids.length) {
+      throw new ValidationError('Parcel IDs must be unique');
+    }
+    if (parcel_codes !== undefined && (
+      !Array.isArray(parcel_codes)
+      || parcel_codes.length !== parcel_ids.length
+      || parcel_codes.some(code => typeof code !== 'string' || !code.trim())
+      || new Set(parcel_codes).size !== parcel_codes.length
+    )) {
+      throw new ValidationError('Parcel codes must be unique and match the selected parcel IDs');
+    }
+    if (geometry_wkt !== undefined && (
+      typeof geometry_wkt !== 'string' || !/^POLYGON\s*\(\(/i.test(geometry_wkt.trim())
+    )) {
+      throw new ValidationError('Merged parcel geometry must be a WKT polygon');
+    }
+    if (transaction_id && !geometry_wkt) {
+      throw new ValidationError('Merged parcel geometry is required for a transaction merge');
+    }
 
-    const parcelsToMerge = await prisma.parcel.findMany({
-      where: { id: { in: parcel_ids } }
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validParcelIds = parcel_ids.filter(id => typeof id === 'string' && uuidPattern.test(id));
+    const parcelCodes = parcel_codes || parcel_ids.map(id => (
+      typeof id === 'string' && !uuidPattern.test(id) ? id : null
+    ));
+    const foundParcels = await prisma.parcel.findMany({
+      where: {
+        OR: [
+          ...(validParcelIds.length ? [{ id: { in: validParcelIds } }] : []),
+          ...(parcelCodes.some(Boolean) ? [{ parcelCode: { in: parcelCodes.filter(Boolean) } }] : [])
+        ]
+      }
     });
+    const parcelsToMerge = parcel_ids.map((id, index) => (
+      foundParcels.find(parcel => parcel.id === id)
+      || (parcelCodes[index]
+        ? foundParcels.find(parcel => parcel.parcelCode === parcelCodes[index])
+        : null)
+    ));
+    const missingParcels = parcelsToMerge
+      .map((parcel, index) => parcel ? null : parcelCodes[index] || parcel_ids[index])
+      .filter(Boolean);
+    if (missingParcels.length || new Set(parcelsToMerge.filter(Boolean).map(parcel => parcel.id)).size !== parcel_ids.length) {
+      throw new NotFoundError(`Selected parcel records were not found: ${missingParcels.join(', ') || 'duplicate parcel selection'}`);
+    }
+    if (parcelsToMerge.some(parcel => parcel.mergedIntoParcelId)) {
+      throw new ValidationError('One or more selected parcels have already been merged');
+    }
 
-    if (parcelsToMerge.length !== parcel_ids.length) {
-      throw new NotFoundError('One or more parcels to merge were not found');
+    let transaction = null;
+    if (transaction_id) {
+      transaction = await prisma.transaction.findUnique({
+        where: { id: transaction_id },
+        select: { id: true, parcelId: true, status: true }
+      });
+      if (!transaction) {
+        throw new NotFoundError('Transaction not found');
+      }
+      if (transaction.status !== 'IN_PROCESS') {
+        throw new ValidationError('The transaction must be in process before its parcels can be merged');
+      }
     }
 
     const totalArea = parcelsToMerge.reduce((acc, p) => acc + (p.areaSqm ? Number(p.areaSqm) : 0), 0);
@@ -402,25 +465,35 @@ exports.mergeParcels = async (req, res, next) => {
     const newCode = merged_parcel_code || `PRC-MERGE-${Date.now().toString().slice(-6)}`;
 
     const result = await prisma.$transaction(async (tx) => {
-      // Create new merged parcel
       const merged = await tx.parcel.create({
         data: {
           parcelCode: newCode,
           areaSqm: parseFloat(totalArea.toFixed(2)),
+          geometryWkt: geometry_wkt || null,
           landUse: land_use || primary.landUse || 'Residential',
           region: primary.region,
           city: primary.city,
           subCity: primary.subCity,
           woreda: primary.woreda,
-          isRegistered: false
+          isRegistered: false,
+          mergeTransactionId: transaction_id || null
         }
       });
 
-      // Deactivate / supersede original parcels
       await tx.parcel.updateMany({
-        where: { id: { in: parcel_ids } },
-        data: { isRegistered: false }
+        where: { id: { in: parcelsToMerge.map(parcel => parcel.id) } },
+        data: {
+          isRegistered: false,
+          mergedIntoParcelId: merged.id
+        }
       });
+
+      if (transaction) {
+        await tx.transaction.update({
+          where: { id: transaction.id },
+          data: { parcelId: merged.id }
+        });
+      }
 
       return merged;
     });
@@ -433,14 +506,16 @@ exports.mergeParcels = async (req, res, next) => {
       newValue: {
         mergedFrom: parcelsToMerge.map(p => p.parcelCode),
         mergedParcelCode: result.parcelCode,
-        totalAreaSqm: result.areaSqm
+        totalAreaSqm: result.areaSqm,
+        transactionId: transaction_id || null
       },
       req
     });
 
     res.status(201).json(serialize({
       mergedParcel: result,
-      sourceParcelCodes: parcelsToMerge.map(p => p.parcelCode)
+      sourceParcelCodes: parcelsToMerge.map(p => p.parcelCode),
+      transactionId: transaction_id || null
     }));
 
   } catch (err) {

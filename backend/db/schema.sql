@@ -104,11 +104,15 @@ CREATE TABLE parcels (
   registration_date TIMESTAMP,
   parent_parcel_id UUID REFERENCES parcels(id) ON DELETE SET NULL,
   split_transaction_id UUID,
+  merged_into_parcel_id UUID REFERENCES parcels(id) ON DELETE SET NULL,
+  merge_transaction_id UUID,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX idx_parcels_geometry ON parcels USING GIST(geometry);
 CREATE INDEX idx_parcels_code ON parcels(parcel_code);
+CREATE INDEX idx_parcels_merge_transaction ON parcels(merge_transaction_id);
+CREATE INDEX idx_parcels_merged_into ON parcels(merged_into_parcel_id);
 
 -- ============================================
 -- APPLICATION TABLE
@@ -172,6 +176,9 @@ ALTER TABLE parcels
   ADD CONSTRAINT parcels_split_transaction_id_fkey
   FOREIGN KEY (split_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL;
 CREATE INDEX idx_parcels_split_transaction ON parcels(split_transaction_id);
+ALTER TABLE parcels
+  ADD CONSTRAINT parcels_merge_transaction_id_fkey
+  FOREIGN KEY (merge_transaction_id) REFERENCES transactions(id) ON DELETE SET NULL;
 
 -- ============================================
 -- PARTIES (Holders)

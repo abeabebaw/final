@@ -6,7 +6,10 @@ exports.getAll = async (req, res, next) => {
   try {
     const { search, is_registered, city, limit = 100 } = req.query;
     
-    const where = { splitChildren: { none: {} } };
+    const where = {
+      splitChildren: { none: {} },
+      mergedIntoParcelId: null
+    };
     
     if (search) {
       where.OR = [

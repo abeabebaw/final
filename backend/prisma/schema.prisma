@@ -218,6 +218,8 @@ model Parcel {
   registrationDate DateTime?           @map("registration_date")
   parentParcelId    String?             @map("parent_parcel_id") @db.Uuid
   splitTransactionId String?            @map("split_transaction_id") @db.Uuid
+  mergedIntoParcelId String?            @map("merged_into_parcel_id") @db.Uuid
+  mergeTransactionId String?            @map("merge_transaction_id") @db.Uuid
   createdAt        DateTime            @default(now()) @map("created_at")
   updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at")
   
@@ -226,6 +228,9 @@ model Parcel {
   parentParcel     Parcel?             @relation("ParcelSplit", fields: [parentParcelId], references: [id], onDelete: SetNull)
   splitChildren    Parcel[]            @relation("ParcelSplit")
   splitTransaction Transaction?        @relation("TransactionSplitParcels", fields: [splitTransactionId], references: [id], onDelete: SetNull)
+  mergedIntoParcel Parcel?             @relation("ParcelMerge", fields: [mergedIntoParcelId], references: [id], onDelete: SetNull)
+  mergedParcels    Parcel[]            @relation("ParcelMerge")
+  mergeTransaction Transaction?        @relation("TransactionMergeParcels", fields: [mergeTransactionId], references: [id], onDelete: SetNull)
   parties          Party[]
   rights           Right[]
   mortgages        Mortgage[]
@@ -301,6 +306,7 @@ model Transaction {
   application            Application?      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   parcel                 Parcel?           @relation(fields: [parcelId], references: [id])
   splitParcels           Parcel[]          @relation("TransactionSplitParcels")
+  mergeParcels           Parcel[]          @relation("TransactionMergeParcels")
   assignedUser           User?             @relation("AssignedTo", fields: [assignedTo], references: [id])
   creator                User?             @relation("CreatedBy", fields: [createdBy], references: [id])
   documents              Document[]
